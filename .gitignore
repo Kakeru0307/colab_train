@@ -1,0 +1,18 @@
+# 生成物（Colab 上で再作成）
+data/pairs/
+
+# Python
+__pycache__/
+*.pyc
+.Python
+venv/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# checkpoints/ は Git に含める（学習結果をローカルへ渡すため）

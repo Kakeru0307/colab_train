@@ -1,0 +1,53 @@
+{
+  "count": 5,
+  "seed": 42,
+  "bars": 8,
+  "output_dir": "C:\\Users\\kake0\\github\\研究\\colab_train\\data\\raw\\synthetic",
+  "entries": [
+    {
+      "file": "synth_chord_strum_C_min_bpm095_0000.mid",
+      "path": "C:\\Users\\kake0\\github\\研究\\colab_train\\data\\raw\\synthetic\\synth_chord_strum_C_min_bpm095_0000.mid",
+      "pattern": "chord_strum",
+      "key": "C",
+      "quality": "min",
+      "bpm": 95,
+      "bars": 8
+    },
+    {
+      "file": "synth_arpeggio_D_maj_bpm073_0001.mid",
+      "path": "C:\\Users\\kake0\\github\\研究\\colab_train\\data\\raw\\synthetic\\synth_arpeggio_D_maj_bpm073_0001.mid",
+      "pattern": "arpeggio",
+      "key": "D",
+      "quality": "maj",
+      "bpm": 73,
+      "bars": 8
+    },
+    {
+      "file": "synth_scale_down_C_major_bpm063_0002.mid",
+      "path": "C:\\Users\\kake0\\github\\研究\\colab_train\\data\\raw\\synthetic\\synth_scale_down_C_major_bpm063_0002.mid",
+      "pattern": "scale_down",
+      "key": "C",
+      "mode": "major",
+      "bpm": 63,
+      "bars": 8
+    },
+    {
+      "file": "synth_arpeggio_Eb_maj_bpm124_0003.mid",
+      "path": "C:\\Users\\kake0\\github\\研究\\colab_train\\data\\raw\\synthetic\\synth_arpeggio_Eb_maj_bpm124_0003.mid",
+      "pattern": "arpeggio",
+      "key": "Eb",
+      "quality": "maj",
+      "bpm": 124,
+      "bars": 8
+    },
+    {
+      "file": "synth_arpeggio_B_m7_bpm143_0004.mid",
+      "path": "C:\\Users\\kake0\\github\\研究\\colab_train\\data\\raw\\synthetic\\synth_arpeggio_B_m7_bpm143_0004.mid",
+      "pattern": "arpeggio",
+      "key": "B",
+      "quality": "m7",
+      "bpm": 143,
+      "bars": 8
+    }
+  ]
+}
