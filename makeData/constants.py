@@ -41,9 +41,33 @@ SCALE_INTERVALS: dict[str, list[int]] = {
     "natural_minor": [0, 2, 3, 5, 7, 8, 10],
 }
 
-PATTERN_TYPES = ("chord_strum", "arpeggio", "scale_up", "scale_down")
+# 旧: 単一コード／スケール往復。新規生成の主戦力は progression_*
+PATTERN_TYPES = (
+    "progression_strum",
+    "progression_arpeggio",
+    "chord_strum",
+    "arpeggio",
+    "scale_up",
+    "scale_down",
+)
+
+# 進行を主、単一コード／スケールはごく少数（比較・多様性用）
+PATTERN_WEIGHTS: dict[str, float] = {
+    "progression_strum": 0.48,
+    "progression_arpeggio": 0.42,
+    "chord_strum": 0.04,
+    "arpeggio": 0.03,
+    "scale_up": 0.015,
+    "scale_down": 0.015,
+}
+
+# Stage 1 目標（8 小節 MIDI ≒ 1 パッチ）
+DEFAULT_SYNTHETIC_COUNT = 6000
 
 BPM_RANGE = (60, 150)
+
+# 長めの曲にすると 1 MIDI から複数パッチ（任意）
+BAR_LENGTH_CHOICES = (8, 16, 24, 32)
 
 # ギターらしい音域（MIDI note number）
 GUITAR_PITCH_MIN = 40

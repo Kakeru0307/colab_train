@@ -9,10 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from midi_to_patch import MidiPatch, midi_to_patches
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-
-PAIR_MODES = ("identity", "onset_to_full")
+from skeleton import PAIR_MODES, make_input_tonal
 
 
 def song_id_from_path(midi_path: Path, raw_root: Path) -> str:
@@ -25,17 +22,7 @@ def patch_has_notes(patch: MidiPatch, *, min_onsets: int = 1) -> bool:
     return onsets >= min_onsets
 
 
-def make_input_tonal(target_tonal: np.ndarray, mode: str) -> np.ndarray:
-    """target tonal (11,128,128) から入力パッチを作る。"""
-    if mode == "identity":
-        return target_tonal.copy()
-
-    if mode == "onset_to_full":
-        input_tonal = np.zeros_like(target_tonal)
-        input_tonal[target_tonal == 1] = 1
-        return input_tonal
-
-    raise ValueError(f"未対応の mode: {mode}")
+SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 def save_pair_patches(
@@ -148,7 +135,7 @@ def main() -> None:
         "--mode",
         choices=PAIR_MODES,
         default="onset_to_full",
-        help="identity=入出力同一, onset_to_full=発音のみ→音価付き正解",
+        help="identity / onset_to_full / downbeat_chord / root_per_bar / melody_line",
     )
     parser.add_argument(
         "--min-onsets",

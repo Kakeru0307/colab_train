@@ -6,9 +6,11 @@ import argparse
 import json
 from pathlib import Path
 
-from makeData.generate import generate_dataset
+from makeData.constants import DEFAULT_SYNTHETIC_COUNT
+from makeData.generate import count_existing_midis, generate_dataset
 from prepare_dataset import prepare_pairs
 from remap_guitar_programs import remap_directory
+from skeleton import PAIR_MODES
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -30,22 +32,34 @@ def ensure_synthetic_raw(
     seed: int,
     force_regenerate: bool = False,
 ) -> dict:
-    existing = count_midi_files(RAW_SYNTHETIC)
-    if force_regenerate or existing < count:
-        if existing and not force_regenerate:
-            print(f"合成 MIDI: 既存 {existing} 本 < 目標 {count} 本 → 生成します")
-        return generate_dataset(RAW_SYNTHETIC, count=count, seed=seed)
+    existing = count_existing_midis(RAW_SYNTHETIC)
+    if force_regenerate:
+        print(f"合成 MIDI: {count} 本を先頭から再生成します")
+        return generate_dataset(RAW_SYNTHETIC, count=count, seed=seed, start_index=0)
+
+    if existing < count:
+        print(f"合成 MIDI: 既存 {existing} 本 → 目標 {count} 本（+{count - existing} 本を追記）")
+        return generate_dataset(
+            RAW_SYNTHETIC,
+            count=count,
+            seed=seed,
+            start_index=existing,
+        )
+
     print(f"合成 MIDI: 既存 {existing} 本を使用（再生成スキップ）")
-    with open(RAW_SYNTHETIC / "manifest.json", encoding="utf-8") as f:
-        return json.load(f)
+    manifest_path = RAW_SYNTHETIC / "manifest.json"
+    if manifest_path.is_file():
+        with open(manifest_path, encoding="utf-8") as f:
+            return json.load(f)
+    return {"count": existing, "seed": seed, "output_dir": str(RAW_SYNTHETIC)}
 
 
 def prepare_all(
     *,
-    synthetic_count: int = 1000,
+    synthetic_count: int = DEFAULT_SYNTHETIC_COUNT,
     synthetic_seed: int = 42,
     force_regenerate: bool = False,
-    mode: str = "onset_to_full",
+    mode: str = "downbeat_chord",
     min_onsets: int = 1,
     skip_guitar_remap: bool = False,
 ) -> dict:
@@ -114,14 +128,24 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="合成 + Guitar-TECHS を一括パッチ化（Colab 用）",
     )
-    parser.add_argument("--synthetic-count", type=int, default=1000)
+    parser.add_argument(
+        "--synthetic-count",
+        type=int,
+        default=DEFAULT_SYNTHETIC_COUNT,
+        help=f"目標 MIDI 本数（既定 {DEFAULT_SYNTHETIC_COUNT}、8小節≈1パッチ）",
+    )
     parser.add_argument("--synthetic-seed", type=int, default=42)
     parser.add_argument(
         "--force-regenerate",
         action="store_true",
         help="合成 MIDI を必ず再生成する",
     )
-    parser.add_argument("--mode", choices=("identity", "onset_to_full"), default="onset_to_full")
+    parser.add_argument(
+        "--mode",
+        choices=PAIR_MODES,
+        default="downbeat_chord",
+        help="学習タスク: downbeat_chord=小節頭コード骨格→フル（推奨）",
+    )
     parser.add_argument("--min-onsets", type=int, default=1)
     parser.add_argument(
         "--skip-guitar-remap",
