@@ -45,10 +45,9 @@ def save_pair_patches(
         input_tonal = make_input_tonal(target_tonal, mode)
         stem = f"bar{patch.bar_index:04d}"
 
-        np.save(input_dir / f"{stem}_tonal.npy", input_tonal)
-        np.save(input_dir / f"{stem}_drum.npy", patch.drum_chw)
-        np.save(target_dir / f"{stem}_tonal.npy", target_tonal)
-        np.save(target_dir / f"{stem}_drum.npy", patch.drum_chw)
+        np.save(input_dir / f"{stem}_tonal.npy", input_tonal.astype(np.uint8, copy=False))
+        np.save(target_dir / f"{stem}_tonal.npy", target_tonal.astype(np.uint8, copy=False))
+        # drum は現行学習で未使用のため保存しない（Colab ディスク節約）
         saved += 1
 
     return saved

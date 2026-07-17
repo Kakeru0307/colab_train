@@ -132,8 +132,8 @@ def main() -> None:
     parser.add_argument(
         "--bars",
         type=int,
-        default=None,
-        help="小節数を固定（未指定時は 8/16/24/32 をランダム）",
+        default=8,
+        help="小節数（既定 8。Colab ディスク対策で 8 固定推奨）",
     )
     parser.add_argument(
         "--append",

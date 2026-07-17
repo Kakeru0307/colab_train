@@ -61,13 +61,13 @@ PATTERN_WEIGHTS: dict[str, float] = {
     "scale_down": 0.015,
 }
 
-# Stage 1 目標（8 小節 MIDI ≒ 1 パッチ）
+# Stage 1 目標（8 小節 MIDI ≒ 1 パッチ）※ Colab ディスク対策で長尺は使わない
 DEFAULT_SYNTHETIC_COUNT = 6000
 
 BPM_RANGE = (60, 150)
 
-# 長めの曲にすると 1 MIDI から複数パッチ（任意）
-BAR_LENGTH_CHOICES = (8, 16, 24, 32)
+# 既定は 8 小節のみ（16/24/32 は 1 MIDI から多数パッチが出てディスクを圧迫する）
+BAR_LENGTH_CHOICES = (8,)
 
 # ギターらしい音域（MIDI note number）
 GUITAR_PITCH_MIN = 40

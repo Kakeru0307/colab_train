@@ -31,18 +31,31 @@ def ensure_synthetic_raw(
     count: int,
     seed: int,
     force_regenerate: bool = False,
+    bars: int = 8,
 ) -> dict:
     existing = count_existing_midis(RAW_SYNTHETIC)
     if force_regenerate:
-        print(f"合成 MIDI: {count} 本を先頭から再生成します")
-        return generate_dataset(RAW_SYNTHETIC, count=count, seed=seed, start_index=0)
-
-    if existing < count:
-        print(f"合成 MIDI: 既存 {existing} 本 → 目標 {count} 本（+{count - existing} 本を追記）")
+        print(f"合成 MIDI: {count} 本を先頭から再生成します（bars={bars}）")
+        for path in RAW_SYNTHETIC.glob("synth_*.mid"):
+            path.unlink()
+        manifest_path = RAW_SYNTHETIC / "manifest.json"
+        if manifest_path.is_file():
+            manifest_path.unlink()
         return generate_dataset(
             RAW_SYNTHETIC,
             count=count,
             seed=seed,
+            bars=bars,
+            start_index=0,
+        )
+
+    if existing < count:
+        print(f"合成 MIDI: 既存 {existing} 本 → 目標 {count} 本（+{count - existing} 本を追記, bars={bars}）")
+        return generate_dataset(
+            RAW_SYNTHETIC,
+            count=count,
+            seed=seed,
+            bars=bars,
             start_index=existing,
         )
 
@@ -62,12 +75,14 @@ def prepare_all(
     mode: str = "downbeat_chord",
     min_onsets: int = 1,
     skip_guitar_remap: bool = False,
+    bars: int = 8,
 ) -> dict:
     print("=== Step 1: 合成 MIDI ===")
     synthetic_raw_manifest = ensure_synthetic_raw(
         count=synthetic_count,
         seed=synthetic_seed,
         force_regenerate=force_regenerate,
+        bars=bars,
     )
 
     print("\n=== Step 2: Guitar-TECHS program 確認 ===")
@@ -96,6 +111,7 @@ def prepare_all(
 
     summary = {
         "mode": mode,
+        "bars": bars,
         "synthetic": {
             "raw_dir": str(RAW_SYNTHETIC),
             "pairs_dir": str(PAIRS_SYNTHETIC),
@@ -148,6 +164,12 @@ def main() -> None:
     )
     parser.add_argument("--min-onsets", type=int, default=1)
     parser.add_argument(
+        "--bars",
+        type=int,
+        default=8,
+        help="合成 MIDI の小節数（既定 8。長くするとパッチが爆発する）",
+    )
+    parser.add_argument(
         "--skip-guitar-remap",
         action="store_true",
         help="Guitar-TECHS の program 統一をスキップ",
@@ -161,6 +183,7 @@ def main() -> None:
         mode=args.mode,
         min_onsets=args.min_onsets,
         skip_guitar_remap=args.skip_guitar_remap,
+        bars=args.bars,
     )
 
 
