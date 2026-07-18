@@ -78,7 +78,8 @@ def train(
     if resume is not None:
         checkpoint = torch.load(resume, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint["model_state_dict"])
-        print(f"チェックポイントを読み込み: {resume}")
+        prev_epochs = checkpoint.get("epochs", "?")
+        print(f"再開: {resume} から重みを読み込み（前 epochs={prev_epochs}）")
     optimizer = optim.AdamW(model.parameters(), lr=lr)
 
     for epoch in range(1, epochs + 1):
@@ -139,22 +140,24 @@ def main() -> None:
     )
     parser.add_argument("--pos-weight", type=float, default=10.0)
     parser.add_argument(
+        "--resume",
+        type=Path,
+        default=None,
+        help="既存チェックポイントから重みを読み込んで学習を継続する",
+    )
+    parser.add_argument(
         "--encoder-weights",
         type=str,
         default=None,
         help="例: imagenet（ネットワーク接続が必要）",
     )
-    parser.add_argument(
-        "--resume",
-        type=Path,
-        default=None,
-        help="Stage 2 等: 既存 checkpoint から学習を再開",
-    )
     args = parser.parse_args()
 
     data_dir = args.data_dir
     if data_dir is None and args.pairs_dir is None:
-        data_dir = SCRIPT_DIR / "data" / "patches" / "test1"
+        data_dir = (
+            SCRIPT_DIR / "stash" / "data_legacy" / "patches" / "test1"
+        )
 
     train(
         data_dir,

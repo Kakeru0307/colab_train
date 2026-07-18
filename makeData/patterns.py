@@ -11,6 +11,7 @@ from .constants import (
     BAR_LENGTH_CHOICES,
     BEAT_TICKS,
     DEFAULT_BARS,
+    DEFAULT_VELOCITY,
     PATTERN_WEIGHTS,
     TICKS_PER_BAR,
 )
@@ -137,6 +138,60 @@ def generate_progression_arpeggio(
         for index, pitch in enumerate(pitches):
             time = bar * TICKS_PER_BAR + index * step
             add_note(track, time=time, pitch=pitch, duration=duration)
+
+    return build_music(track, bars=bars, tempo=float(bpm))
+
+
+def generate_progression_lead(
+    *,
+    spec: ProgressionSpec,
+    key: str,
+    bpm: int,
+    bars: int = DEFAULT_BARS,
+    bars_per_chord: int = 1,
+    rng: random.Random | None = None,
+    rest_prob: float = 0.18,
+    leap_prob: float = 0.15,
+) -> muspy.Music:
+    """進行のスケール上で単音リードフレーズを生成する。
+
+    - 拍頭はコードトーンに着地（和声感）
+    - 裏拍はスケール音で順次進行（時々跳躍）
+    - 休符で息継ぎ（フレーズ感）
+    monophonic（各時刻 1 音）。
+    """
+    rng = rng or random.Random()
+    track = make_guitar_track(f"prog_lead_{spec.name}")
+    scale = scale_pitches(key, spec.mode, base_octave=4)  # リードは高めの音域
+    if not scale:
+        scale = scale_pitches(key, spec.mode)
+    pitch_sets = progression_chord_pitch_sets(spec, key)
+    chord_pc_sets = [set(p % 12 for p in ps) for ps in pitch_sets]
+
+    step = TICKS_PER_BAR // 8  # 8 分刻み
+    idx = len(scale) // 2  # 中央から開始
+
+    for bar in range(bars):
+        chord_pcs = chord_pc_sets[(bar // bars_per_chord) % len(chord_pc_sets)]
+        for e in range(8):
+            pos = bar * TICKS_PER_BAR + e * step
+            is_strong = (e * step) % BEAT_TICKS == 0  # 拍頭
+            if not is_strong and rng.random() < rest_prob:
+                continue
+            if is_strong:
+                cand = [i for i in range(len(scale)) if scale[i] % 12 in chord_pcs]
+                if cand:
+                    idx = min(cand, key=lambda i: abs(i - idx))
+            else:
+                span = rng.randint(2, 4) if rng.random() < leap_prob else 1
+                idx = max(0, min(len(scale) - 1, idx + rng.choice((-1, 1)) * span))
+            add_note(
+                track,
+                time=pos,
+                pitch=scale[idx],
+                duration=step,
+                velocity=DEFAULT_VELOCITY,
+            )
 
     return build_music(track, bars=bars, tempo=float(bpm))
 
