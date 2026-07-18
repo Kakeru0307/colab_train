@@ -77,19 +77,29 @@ python scripts/push_checkpoint.py \
   --message "Stage1+2 downbeat_chord"
 ```
 
-## ローカルへ取り込み
+## ローカルへ取り込み（バッキング用）
+
+Colab の Stage 2 完了後、**最終配置先は `prttype/checkpoints/backing/`** です。
 
 ```powershell
 cd colab_train
 git pull
-Copy-Item checkpoints\stage2\unet_last.pt ..\prttype\checkpoints\guitar-techs\unet_last.pt
+.\scripts\import_to_prttype.ps1
+# または手動:
+Copy-Item checkpoints\stage2\unet_last.pt ..\prttype\checkpoints\backing\unet_last.pt -Force
 ```
 
-ローカル推論（骨格モード）:
+| Colab 上（学習中） | ローカル最終配置 |
+|---|---|
+| `checkpoints/stage1/unet_last.pt` | （任意）比較用に残す程度 |
+| `checkpoints/stage2/unet_last.pt` | → **`prttype/checkpoints/backing/unet_last.pt`** |
+| （将来）リード学習 | → `prttype/checkpoints/lead/unet_last.pt` |
+
+ローカル生成:
 
 ```powershell
 cd ..\prttype
-python inference.py --midi midi/test1.mid --input-mode downbeat_chord --guitar-program 29
+python generate_backing.py --progression marusa --key C --bars 8 --bpm 100
 ```
 
 ## 初回 GitHub セットアップ

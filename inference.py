@@ -32,6 +32,7 @@ from program_utils import (
 SCRIPT_DIR = Path(__file__).resolve().parent
 MIDI_DIR = SCRIPT_DIR / "midi"
 GUITAR_CATEGORY = GUITAR_PROGRAM // 8
+INFERENCE_MODES = PAIR_MODES + ("full",)
 
 
 def generated_midi_path(input_midi: Path) -> Path:
@@ -171,11 +172,13 @@ def run_inference(
     output_path: Path,
     *,
     identity: bool = False,
-    input_mode: str = "onset_to_full",
+    input_mode: str = "downbeat_chord",
     guitar_only: bool = True,
     guitar_program: int = GUITAR_OVERDRIVE_PROGRAM,
+    bpm: float | None = None,
 ) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    input_music = muspy.read_midi(midi_path)
     patches = midi_to_patches(midi_path)
 
     if identity:
@@ -193,6 +196,14 @@ def run_inference(
             program=guitar_program,
             include_drums=False,
         )
+
+    if bpm is not None:
+        music.tempos = [muspy.Tempo(time=0, qpm=float(bpm))]
+    elif getattr(input_music, "tempos", None):
+        music.tempos = list(input_music.tempos)
+    else:
+        music.tempos = [muspy.Tempo(time=0, qpm=120.0)]
+
     save_music(music, output_path)
 
     note_count = sum(len(track.notes) for track in music.tracks)
@@ -201,7 +212,12 @@ def run_inference(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description=(
+            "既存 MIDI からの変換推論。"
+            "進行からバッキングを新規生成する場合は generate_backing.py を使ってください。"
+        ),
+    )
     parser.add_argument(
         "--midi",
         type=Path,
@@ -210,7 +226,7 @@ def main() -> None:
     parser.add_argument(
         "--checkpoint",
         type=Path,
-        default=SCRIPT_DIR / "checkpoints" / "guitar-techs" / "unet_last.pt",
+        default=SCRIPT_DIR / "checkpoints" / "backing" / "unet_last.pt",
     )
     parser.add_argument(
         "--output",
@@ -220,9 +236,15 @@ def main() -> None:
     )
     parser.add_argument(
         "--input-mode",
-        choices=PAIR_MODES,
-        default="onset_to_full",
-        help="onset_to_full=発音点固定, downbeat_chord/root_per_bar/melody_line=骨格→音追加",
+        choices=INFERENCE_MODES,
+        default="downbeat_chord",
+        help="downbeat_chord=骨格抽出して生成（推奨）, full=入力をそのままモデルへ, onset_to_full=発音点固定",
+    )
+    parser.add_argument(
+        "--bpm",
+        type=float,
+        default=None,
+        help="出力テンポ（未指定時は入力 MIDI のテンポ、なければ 120）",
     )
     parser.add_argument(
         "--all-categories",
@@ -252,6 +274,7 @@ def main() -> None:
         input_mode=args.input_mode,
         guitar_only=not args.all_categories,
         guitar_program=args.guitar_program,
+        bpm=args.bpm,
     )
 
 
