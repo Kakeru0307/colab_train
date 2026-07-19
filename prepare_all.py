@@ -18,12 +18,36 @@ RAW_SYNTHETIC = SCRIPT_DIR / "data" / "raw" / "synthetic"
 RAW_GUITAR_TECHS = SCRIPT_DIR / "data" / "raw" / "guitar-techs"
 PAIRS_SYNTHETIC = SCRIPT_DIR / "data" / "pairs" / "synthetic"
 PAIRS_GUITAR_TECHS = SCRIPT_DIR / "data" / "pairs" / "guitar-techs"
+PAIRS_GUITAR_TECHS_CURATED = SCRIPT_DIR / "data" / "pairs" / "guitar-techs-curated"
+
+# 高価値サブセット: P3_music 全件 + chords を各フォルダから間引き
+CURATED_TECHS_LIMITS: dict[str, int | None] = {
+    "P3_music": None,  # 全件
+    "P1_chords": 6,
+    "P2_chords": 6,
+}
 
 
 def count_midi_files(raw_dir: Path) -> int:
     if not raw_dir.is_dir():
         return 0
     return len(list(raw_dir.rglob("*.mid")))
+
+
+def list_curated_techs_midis(raw_dir: Path) -> list[Path]:
+    """改善寄与の高い TECHS のみ（決定的に間引き）。"""
+    selected: list[Path] = []
+    for category, limit in CURATED_TECHS_LIMITS.items():
+        cat_dir = raw_dir / category
+        if not cat_dir.is_dir():
+            print(f"警告: カテゴリがありません（スキップ）: {cat_dir}")
+            continue
+        files = sorted(cat_dir.rglob("*.mid"))
+        if limit is not None:
+            files = files[:limit]
+        print(f"  curated {category}: {len(files)} MIDI" + ("" if limit is None else f" (max {limit})"))
+        selected.extend(files)
+    return selected
 
 
 def ensure_synthetic_raw(
@@ -76,6 +100,7 @@ def prepare_all(
     min_onsets: int = 1,
     skip_guitar_remap: bool = False,
     bars: int = 8,
+    techs_full: bool = False,
 ) -> dict:
     print("=== Step 1: 合成 MIDI ===")
     synthetic_raw_manifest = ensure_synthetic_raw(
@@ -99,19 +124,40 @@ def prepare_all(
         min_onsets=min_onsets,
     )
 
-    print("\n=== Step 4: Guitar-TECHS をパッチ化 ===")
     if not RAW_GUITAR_TECHS.is_dir():
         raise FileNotFoundError(f"Guitar-TECHS がありません: {RAW_GUITAR_TECHS}")
-    guitar_pairs = prepare_pairs(
-        RAW_GUITAR_TECHS,
-        PAIRS_GUITAR_TECHS,
-        mode=mode,
-        min_onsets=min_onsets,
-    )
+
+    if techs_full:
+        print("\n=== Step 4: Guitar-TECHS 全量をパッチ化 ===")
+        techs_pairs_dir = PAIRS_GUITAR_TECHS
+        guitar_pairs = prepare_pairs(
+            RAW_GUITAR_TECHS,
+            techs_pairs_dir,
+            mode=mode,
+            min_onsets=min_onsets,
+        )
+        techs_label = "full"
+    else:
+        print("\n=== Step 4: Guitar-TECHS 高価値サブセットをパッチ化 ===")
+        print("  (P3_music 全件 + P1/P2_chords 各最大 6 本)")
+        curated = list_curated_techs_midis(RAW_GUITAR_TECHS)
+        if not curated:
+            raise FileNotFoundError("curated TECHS MIDI が 0 件です")
+        techs_pairs_dir = PAIRS_GUITAR_TECHS_CURATED
+        guitar_pairs = prepare_pairs(
+            RAW_GUITAR_TECHS,
+            techs_pairs_dir,
+            mode=mode,
+            min_onsets=min_onsets,
+            midi_files=curated,
+        )
+        techs_label = "curated"
 
     summary = {
         "mode": mode,
         "bars": bars,
+        "techs_selection": techs_label,
+        "curated_limits": None if techs_full else CURATED_TECHS_LIMITS,
         "synthetic": {
             "raw_dir": str(RAW_SYNTHETIC),
             "pairs_dir": str(PAIRS_SYNTHETIC),
@@ -120,7 +166,7 @@ def prepare_all(
         },
         "guitar_techs": {
             "raw_dir": str(RAW_GUITAR_TECHS),
-            "pairs_dir": str(PAIRS_GUITAR_TECHS),
+            "pairs_dir": str(techs_pairs_dir),
             "midi_files": guitar_pairs["midi_files"],
             "total_patches": guitar_pairs["total_patches"],
         },
@@ -134,7 +180,7 @@ def prepare_all(
 
     print("\n=== 完了 ===")
     print(f"合成パッチ: {summary['synthetic']['total_patches']}")
-    print(f"TECHS パッチ: {summary['guitar_techs']['total_patches']}")
+    print(f"TECHS ({techs_label}) パッチ: {summary['guitar_techs']['total_patches']}")
     print(f"合計パッチ: {summary['total_patches']}")
     print(f"manifest: {summary_path}")
     return summary
@@ -174,6 +220,11 @@ def main() -> None:
         action="store_true",
         help="Guitar-TECHS の program 統一をスキップ",
     )
+    parser.add_argument(
+        "--techs-full",
+        action="store_true",
+        help="TECHS 全量をパッチ化（非推奨・リズム崩れリスク）。既定は curated のみ",
+    )
     args = parser.parse_args()
 
     prepare_all(
@@ -184,6 +235,7 @@ def main() -> None:
         min_onsets=args.min_onsets,
         skip_guitar_remap=args.skip_guitar_remap,
         bars=args.bars,
+        techs_full=args.techs_full,
     )
 
 

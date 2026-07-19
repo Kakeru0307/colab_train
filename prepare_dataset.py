@@ -60,31 +60,34 @@ def prepare_pairs(
     mode: str = "onset_to_full",
     min_onsets: int = 1,
     categories: list[str] | None = None,
+    midi_files: list[Path] | None = None,
 ) -> dict:
     input_root = pairs_dir / "input"
     target_root = pairs_dir / "target"
-    midi_files = sorted(raw_dir.rglob("*.mid"))
+    if midi_files is not None:
+        files = sorted(midi_files)
+    else:
+        files = sorted(raw_dir.rglob("*.mid"))
+        if categories:
+            files = [
+                path
+                for path in files
+                if path.relative_to(raw_dir).parts[0] in categories
+            ]
 
-    if categories:
-        midi_files = [
-            path
-            for path in midi_files
-            if path.relative_to(raw_dir).parts[0] in categories
-        ]
-
-    if not midi_files:
+    if not files:
         raise FileNotFoundError(f"MIDI が見つかりません: {raw_dir}")
 
     stats = {
         "mode": mode,
         "raw_dir": str(raw_dir),
         "pairs_dir": str(pairs_dir),
-        "midi_files": len(midi_files),
+        "midi_files": len(files),
         "songs": [],
         "total_patches": 0,
     }
 
-    for midi_path in midi_files:
+    for midi_path in files:
         song_id = song_id_from_path(midi_path, raw_dir)
         patches = midi_to_patches(midi_path)
         saved = save_pair_patches(
