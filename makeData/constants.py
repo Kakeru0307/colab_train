@@ -61,6 +61,23 @@ PATTERN_WEIGHTS: dict[str, float] = {
     "scale_down": 0.015,
 }
 
+# バッキング・ストロークの音価型（1曲=1ノリ）。案1: 全部同じ長さをやめる
+STRUM_ARTICULATIONS = (
+    "solid",
+    "staccato",
+    "mixed",
+    "sustained",
+    "rests",
+)
+
+STRUM_ARTICULATION_WEIGHTS: dict[str, float] = {
+    "solid": 0.25,
+    "staccato": 0.25,
+    "mixed": 0.30,
+    "sustained": 0.10,
+    "rests": 0.10,
+}
+
 # Stage 1 目標（8 小節 MIDI ≒ 1 パッチ）※ Colab ディスク対策で長尺は使わない
 DEFAULT_SYNTHETIC_COUNT = 6000
 

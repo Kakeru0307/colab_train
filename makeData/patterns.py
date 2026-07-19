@@ -13,6 +13,7 @@ from .constants import (
     DEFAULT_BARS,
     DEFAULT_VELOCITY,
     PATTERN_WEIGHTS,
+    STRUM_ARTICULATION_WEIGHTS,
     TICKS_PER_BAR,
 )
 from .progressions import (
@@ -23,6 +24,57 @@ from .progressions import (
 from .voicings import chord_pitches, scale_pitches
 
 
+def choose_strum_articulation(rng: random.Random) -> str:
+    names = list(STRUM_ARTICULATION_WEIGHTS.keys())
+    weights = [STRUM_ARTICULATION_WEIGHTS[n] for n in names]
+    return rng.choices(names, weights=weights, k=1)[0]
+
+
+def _strum_beat_duration(
+    articulation: str,
+    *,
+    beat: int,
+    beats_per_bar: int,
+    step: int,
+    rng: random.Random,
+    rest_beats: frozenset[int],
+) -> int | None:
+    """ストローク1拍の duration。None は休符（鳴らさない）。"""
+    full = max(step - 1, 1)
+    short = max(1, min(2, step // 2))
+    half = max(1, step // 2)
+
+    if articulation == "solid":
+        return full
+    if articulation == "staccato":
+        return short
+    if articulation == "mixed":
+        return short if (beat % 2 == 1) else full
+    if articulation == "sustained":
+        # 2 拍に 1 回、長めに伸ばす（バラード寄り）
+        if beat % 2 != 0:
+            return None
+        return max(2 * step - 1, full)
+    if articulation == "rests":
+        if beat in rest_beats:
+            return None
+        return short if rng.random() < 0.35 else full
+    return full
+
+
+def _choose_rest_beats(rng: random.Random, beats_per_bar: int) -> frozenset[int]:
+    """1曲で固定する休符拍（少なくとも1拍は鳴らす）。"""
+    if beats_per_bar <= 1:
+        return frozenset()
+    # よくある型: 4拍目休み / 2と4休み / 3拍目休み
+    candidates = (
+        frozenset({beats_per_bar - 1}),
+        frozenset({1, 3}) if beats_per_bar >= 4 else frozenset({1}),
+        frozenset({2}) if beats_per_bar >= 3 else frozenset({1}),
+    )
+    return rng.choice(candidates)
+
+
 def generate_chord_strum(
     *,
     key: str,
@@ -30,14 +82,29 @@ def generate_chord_strum(
     bpm: int,
     bars: int = DEFAULT_BARS,
     beats_per_bar: int = 4,
+    articulation: str = "solid",
+    rng: random.Random | None = None,
 ) -> muspy.Music:
+    rng = rng or random.Random()
     track = make_guitar_track("chord_strum")
     pitches = chord_pitches(key, quality)
     step = TICKS_PER_BAR // beats_per_bar
-    duration = max(step - 1, BEAT_TICKS - 1)
+    rest_beats = (
+        _choose_rest_beats(rng, beats_per_bar) if articulation == "rests" else frozenset()
+    )
 
     for bar in range(bars):
         for beat in range(beats_per_bar):
+            duration = _strum_beat_duration(
+                articulation,
+                beat=beat,
+                beats_per_bar=beats_per_bar,
+                step=step,
+                rng=rng,
+                rest_beats=rest_beats,
+            )
+            if duration is None:
+                continue
             time = bar * TICKS_PER_BAR + beat * step
             add_chord(track, pitches, time=time, duration=duration)
 
@@ -100,17 +167,36 @@ def generate_progression_strum(
     bars: int = DEFAULT_BARS,
     beats_per_bar: int = 4,
     bars_per_chord: int = 1,
+    articulation: str = "solid",
+    rng: random.Random | None = None,
 ) -> muspy.Music:
-    """進行に沿って、コードごとにストローク伴奏を生成する。"""
+    """進行に沿って、コードごとにストローク伴奏を生成する。
+
+    articulation（1曲=1ノリ）:
+      solid / staccato / mixed / sustained / rests
+    """
+    rng = rng or random.Random()
     track = make_guitar_track(f"prog_strum_{spec.name}")
     pitch_sets = progression_chord_pitch_sets(spec, key)
     step = TICKS_PER_BAR // beats_per_bar
-    duration = max(step - 1, BEAT_TICKS - 1)
+    rest_beats = (
+        _choose_rest_beats(rng, beats_per_bar) if articulation == "rests" else frozenset()
+    )
 
     for bar in range(bars):
         chord_index = (bar // bars_per_chord) % len(pitch_sets)
         pitches = pitch_sets[chord_index]
         for beat in range(beats_per_bar):
+            duration = _strum_beat_duration(
+                articulation,
+                beat=beat,
+                beats_per_bar=beats_per_bar,
+                step=step,
+                rng=rng,
+                rest_beats=rest_beats,
+            )
+            if duration is None:
+                continue
             time = bar * TICKS_PER_BAR + beat * step
             add_chord(track, pitches, time=time, duration=duration)
 
@@ -236,21 +322,34 @@ def generate_random_phrase(
         key = choose_key_for_progression(rng, spec)
         bars_per_chord = rng.choice((1, 1, 1, 2))
         if pattern == "progression_strum":
+            articulation = choose_strum_articulation(rng)
             music = generate_progression_strum(
                 spec=spec,
                 key=key,
                 bpm=bpm_value,
                 bars=bars,
                 bars_per_chord=bars_per_chord,
+                articulation=articulation,
+                rng=rng,
             )
-        else:
-            music = generate_progression_arpeggio(
-                spec=spec,
-                key=key,
-                bpm=bpm_value,
-                bars=bars,
-                bars_per_chord=bars_per_chord,
-            )
+            return music, {
+                "pattern": pattern,
+                "progression": spec.name,
+                "family": spec.family,
+                "mode": spec.mode,
+                "key": key,
+                "bars_per_chord": bars_per_chord,
+                "articulation": articulation,
+                "bpm": bpm_value,
+                "bars": bars,
+            }
+        music = generate_progression_arpeggio(
+            spec=spec,
+            key=key,
+            bpm=bpm_value,
+            bars=bars,
+            bars_per_chord=bars_per_chord,
+        )
         return music, {
             "pattern": pattern,
             "progression": spec.name,
@@ -266,13 +365,20 @@ def generate_random_phrase(
 
     if pattern == "chord_strum":
         quality = rng.choice(CHORD_QUALITIES)
+        articulation = choose_strum_articulation(rng)
         music = generate_chord_strum(
-            key=key, quality=quality, bpm=bpm_value, bars=bars
+            key=key,
+            quality=quality,
+            bpm=bpm_value,
+            bars=bars,
+            articulation=articulation,
+            rng=rng,
         )
         meta = {
             "pattern": pattern,
             "key": key,
             "quality": quality,
+            "articulation": articulation,
             "bpm": bpm_value,
             "bars": bars,
         }
