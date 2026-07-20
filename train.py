@@ -105,6 +105,9 @@ def train(
             "model_state_dict": model.state_dict(),
             "epochs": epochs,
             "lr": lr,
+            "model_type": "unet",
+            "in_channels": 12,
+            "out_channels": 11,
         },
         ckpt_path,
     )

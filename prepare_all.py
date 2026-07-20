@@ -110,6 +110,14 @@ def prepare_all(
         bars=bars,
     )
 
+    if force_regenerate:
+        import shutil
+
+        for pairs_dir in (PAIRS_SYNTHETIC, PAIRS_GUITAR_TECHS_CURATED):
+            if pairs_dir.is_dir():
+                print(f"旧ペア削除: {pairs_dir}")
+                shutil.rmtree(pairs_dir)
+
     print("\n=== Step 2: Guitar-TECHS program 確認 ===")
     if not skip_guitar_remap and RAW_GUITAR_TECHS.is_dir():
         remap_directory(RAW_GUITAR_TECHS)

@@ -25,6 +25,7 @@ from makeData.constants import BPM_RANGE, DEFAULT_BARS, KEYS
 from makeData.patterns import choose_progression, generate_progression_lead
 from midi_to_patch import MidiPatch, midi_to_patches
 from progression_input import build_backing_skeleton_music
+from density_cond import bpm_to_unit
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -87,6 +88,7 @@ def generate_lead_pairs(
                 stem = f"bar{tgt.bar_index:04d}"
                 np.save(in_dir / f"{stem}_tonal.npy", inp.tonal_chw.astype(np.uint8, copy=False))
                 np.save(tg_dir / f"{stem}_tonal.npy", tgt.tonal_chw.astype(np.uint8, copy=False))
+                np.save(in_dir / f"{stem}_cond.npy", np.float32(bpm_to_unit(bpm)))
                 saved += 1
 
             stats["songs"].append({"song_id": song_id, "progression": spec.name, "key": key, "patches": saved})

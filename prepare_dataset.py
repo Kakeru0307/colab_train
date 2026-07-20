@@ -6,8 +6,10 @@ import argparse
 import json
 from pathlib import Path
 
+import muspy
 import numpy as np
 
+from density_cond import bpm_to_unit, midi_tempo_bpm
 from midi_to_patch import MidiPatch, midi_to_patches
 from skeleton import PAIR_MODES, make_input_tonal
 
@@ -32,9 +34,11 @@ def save_pair_patches(
     *,
     mode: str,
     min_onsets: int,
+    bpm: float,
 ) -> int:
     input_dir.mkdir(parents=True, exist_ok=True)
     target_dir.mkdir(parents=True, exist_ok=True)
+    cond_unit = np.float32(bpm_to_unit(bpm))
 
     saved = 0
     for patch in patches:
@@ -47,7 +51,7 @@ def save_pair_patches(
 
         np.save(input_dir / f"{stem}_tonal.npy", input_tonal.astype(np.uint8, copy=False))
         np.save(target_dir / f"{stem}_tonal.npy", target_tonal.astype(np.uint8, copy=False))
-        # drum は現行学習で未使用のため保存しない（Colab ディスク節約）
+        np.save(input_dir / f"{stem}_cond.npy", cond_unit)
         saved += 1
 
     return saved
@@ -85,10 +89,13 @@ def prepare_pairs(
         "midi_files": len(files),
         "songs": [],
         "total_patches": 0,
+        "cond": "bpm_unit",
     }
 
     for midi_path in files:
         song_id = song_id_from_path(midi_path, raw_dir)
+        music = muspy.read_midi(midi_path)
+        bpm = midi_tempo_bpm(music)
         patches = midi_to_patches(midi_path)
         saved = save_pair_patches(
             patches,
@@ -96,16 +103,18 @@ def prepare_pairs(
             target_root / song_id,
             mode=mode,
             min_onsets=min_onsets,
+            bpm=bpm,
         )
         stats["songs"].append(
             {
                 "song_id": song_id,
                 "midi": str(midi_path),
                 "patches": saved,
+                "bpm": bpm,
             }
         )
         stats["total_patches"] += saved
-        print(f"{song_id}: {saved} patches")
+        print(f"{song_id}: {saved} patches (bpm={bpm:.1f})")
 
     manifest_path = pairs_dir / "manifest.json"
     with open(manifest_path, "w", encoding="utf-8") as f:

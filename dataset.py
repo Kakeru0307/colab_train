@@ -1,4 +1,4 @@
-"""パッチ画像の Dataset / DataLoader。"""
+"""パッチ画像の Dataset / DataLoader（入力は tonal11 + BPM cond1）。"""
 
 from __future__ import annotations
 
@@ -8,13 +8,15 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+from density_cond import make_bpm_cond_map
 from midi_to_patch import normalize_pianoroll
 
 
 class PatchPairDataset(Dataset):
     """入力・正解の tonal パッチ (.npy) ペアを読み込む。
 
-    input_dir 直下またはサブフォルダ内の ``*_tonal.npy`` を再帰的に収集する。
+    同階層の ``*_cond.npy`` に正規化 BPM（スカラーまたは (1,H,W)）を置く。
+    無い場合は中立 0.5（旧ペア互換・非推奨）。
     """
 
     def __init__(self, input_dir: str | Path, target_dir: str | Path | None = None):
@@ -27,6 +29,21 @@ class PatchPairDataset(Dataset):
     def __len__(self) -> int:
         return len(self.files)
 
+    def _load_cond(self, input_path: Path, height: int, width: int) -> np.ndarray:
+        cond_path = input_path.with_name(
+            input_path.name.replace("_tonal.npy", "_cond.npy")
+        )
+        if cond_path.is_file():
+            raw = np.load(cond_path)
+            arr = np.asarray(raw)
+            if arr.ndim >= 2 and arr.shape[-2:] == (height, width):
+                if arr.ndim == 2:
+                    return arr.reshape(1, height, width).astype(np.float32, copy=False)
+                return arr.astype(np.float32, copy=False)[:1]
+            unit = float(arr.reshape(-1)[0])
+            return np.full((1, height, width), np.float32(unit), dtype=np.float32)
+        return np.full((1, height, width), np.float32(0.5), dtype=np.float32)
+
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         input_path = self.files[idx]
         rel_path = input_path.relative_to(self.input_dir)
@@ -38,26 +55,32 @@ class PatchPairDataset(Dataset):
         else:
             target_arr = normalize_pianoroll(np.load(target_path))
 
+        cond = self._load_cond(input_path, input_arr.shape[1], input_arr.shape[2])
+        model_in = np.concatenate([input_arr.astype(np.float32), cond], axis=0)
+
         return (
-            torch.from_numpy(input_arr),
-            torch.from_numpy(target_arr),
+            torch.from_numpy(model_in),
+            torch.from_numpy(target_arr.astype(np.float32)),
         )
 
 
 class SinglePatchDataset(Dataset):
     """1 枚のパッチを繰り返し返す（過学習テスト用）。"""
 
-    def __init__(self, patch_path: str | Path, length: int = 32):
-        self.patch = torch.from_numpy(
-            normalize_pianoroll(np.load(patch_path))
+    def __init__(self, patch_path: str | Path, length: int = 32, bpm: float = 120.0):
+        tonal = normalize_pianoroll(np.load(patch_path))
+        cond = make_bpm_cond_map(bpm, height=tonal.shape[1], width=tonal.shape[2])
+        self.patch_in = torch.from_numpy(
+            np.concatenate([tonal.astype(np.float32), cond], axis=0)
         )
+        self.patch_tg = torch.from_numpy(tonal.astype(np.float32))
         self.length = length
 
     def __len__(self) -> int:
         return self.length
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        return self.patch, self.patch
+        return self.patch_in, self.patch_tg
 
 
 def get_dataloader(

@@ -51,17 +51,17 @@ PATTERN_TYPES = (
     "scale_down",
 )
 
-# 進行を主、単一コード／スケールはごく少数（比較・多様性用）
+# 進行を主。strum / arpeggio を同比重（刻み語彙を両チャンネルに）
 PATTERN_WEIGHTS: dict[str, float] = {
-    "progression_strum": 0.48,
-    "progression_arpeggio": 0.42,
+    "progression_strum": 0.45,
+    "progression_arpeggio": 0.45,
     "chord_strum": 0.04,
     "arpeggio": 0.03,
     "scale_up": 0.015,
     "scale_down": 0.015,
 }
 
-# バッキング・ストロークの音価型（1曲=1ノリ）。案1: 全部同じ長さをやめる
+# バッキング・ストロークの音価型（1曲=1ノリ）
 STRUM_ARTICULATIONS = (
     "solid",
     "staccato",
@@ -78,8 +78,44 @@ STRUM_ARTICULATION_WEIGHTS: dict[str, float] = {
     "rests": 0.10,
 }
 
-# Stage 1 目標（8 小節 MIDI ≒ 1 パッチ）※ Colab ディスク対策で長尺は使わない
-DEFAULT_SYNTHETIC_COUNT = 6000
+# 1小節あたりの発音回数 N（1..16。中心 4–8 を厚く）
+ATTACKS_PER_BAR_WEIGHTS: dict[int, float] = {
+    1: 1,
+    2: 2,
+    3: 3,
+    4: 5,
+    5: 5,
+    6: 6,
+    7: 4,
+    8: 6,
+    9: 3,
+    10: 2,
+    11: 1,
+    12: 2,
+    13: 1,
+    14: 1,
+    15: 1,
+    16: 1,
+}
+
+PLACEMENT_TYPES = (
+    "even",
+    "front",
+    "back",
+    "offbeat",
+    "sparse_random",
+)
+
+PLACEMENT_WEIGHTS: dict[str, float] = {
+    "even": 0.30,
+    "front": 0.20,
+    "back": 0.15,
+    "offbeat": 0.20,
+    "sparse_random": 0.15,
+}
+
+# Stage 1 目標 B 案（8 小節 MIDI ≒ 1 パッチ）
+DEFAULT_SYNTHETIC_COUNT = 15000
 
 BPM_RANGE = (60, 150)
 

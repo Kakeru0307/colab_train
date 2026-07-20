@@ -157,8 +157,13 @@ def main() -> None:
             manifest_path.unlink()
         start_index = 0
         print("既存の合成 MIDI を削除して再生成します")
-    elif args.append or existing > 0:
+    elif args.append:
         start_index = existing
+    elif existing > 0:
+        raise SystemExit(
+            f"既存の合成 MIDI が {existing} 本あります。"
+            "入れ替えは --force、追記は --append を明示してください。"
+        )
     else:
         start_index = 0
 
