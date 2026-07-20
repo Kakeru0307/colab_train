@@ -21,10 +21,26 @@ def weighted_mse_loss(
     targets: torch.Tensor,
     *,
     pos_weight: float = 10.0,
+    onset_weight: float = 1.0,
+    midbar_onset_bonus: float = 1.0,
+    ticks_per_bar: int = 16,
 ) -> torch.Tensor:
-    """音符セル（非ゼロ）に重みを付けて、無音ばかり予測するのを防ぐ。"""
+    """音符セル（非ゼロ）に重みを付けて、無音ばかり予測するのを防ぐ。
+
+    pos_weight: 無音以外セル全般の重み（既存）
+    onset_weight: onset(正規化値0.5)セルへの追加倍率 — >1 でストローク再現を強化
+    midbar_onset_bonus: 小節頭以外の onset への追加倍率 — >1 で中拍打鍵を強化
+    デフォルトはすべて 1.0 で既存動作と同一。出力レンジは raw 回帰値のまま変えない。
+    """
+    onset_mask = targets == 0.5  # 正規化後の値1（打ち込み onset）
     weights = torch.ones_like(targets)
     weights[targets > 0] = pos_weight
+    if onset_weight != 1.0:
+        weights[onset_mask] *= onset_weight
+    if midbar_onset_bonus != 1.0:
+        time_idx = torch.arange(targets.shape[-2], device=targets.device)
+        midbar = (time_idx % ticks_per_bar != 0).view(1, 1, -1, 1).expand_as(onset_mask)
+        weights[onset_mask & midbar] *= midbar_onset_bonus
     return (weights * (outputs - targets) ** 2).mean()
 
 
@@ -58,6 +74,8 @@ def train(
     overfit_single: bool = False,
     encoder_weights: str | None = None,
     pos_weight: float = 10.0,
+    onset_weight: float = 1.0,
+    midbar_onset_bonus: float = 1.0,
     resume: Path | None = None,
 ) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -91,7 +109,12 @@ def train(
 
             optimizer.zero_grad()
             outputs = model(inputs)
-            loss = weighted_mse_loss(outputs, targets, pos_weight=pos_weight)
+            loss = weighted_mse_loss(
+                outputs, targets,
+                pos_weight=pos_weight,
+                onset_weight=onset_weight,
+                midbar_onset_bonus=midbar_onset_bonus,
+            )
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
@@ -143,6 +166,18 @@ def main() -> None:
     )
     parser.add_argument("--pos-weight", type=float, default=10.0)
     parser.add_argument(
+        "--onset-weight",
+        type=float,
+        default=1.0,
+        help="onset(値1)セルへの追加重み倍率。fine-tune 推奨値: 2.0",
+    )
+    parser.add_argument(
+        "--midbar-onset-bonus",
+        type=float,
+        default=1.0,
+        help="小節頭以外の onset への追加重み倍率。fine-tune 推奨値: 3.0",
+    )
+    parser.add_argument(
         "--resume",
         type=Path,
         default=None,
@@ -172,6 +207,8 @@ def main() -> None:
         overfit_single=args.overfit_single,
         encoder_weights=args.encoder_weights,
         pos_weight=args.pos_weight,
+        onset_weight=args.onset_weight,
+        midbar_onset_bonus=args.midbar_onset_bonus,
         resume=args.resume,
     )
 

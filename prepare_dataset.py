@@ -35,6 +35,7 @@ def save_pair_patches(
     mode: str,
     min_onsets: int,
     bpm: float,
+    first_patch_only: bool = False,
 ) -> int:
     input_dir.mkdir(parents=True, exist_ok=True)
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -42,6 +43,8 @@ def save_pair_patches(
 
     saved = 0
     for patch in patches:
+        if first_patch_only and patch.bar_index > 0:
+            continue
         if not patch_has_notes(patch, min_onsets=min_onsets):
             continue
 
@@ -65,6 +68,7 @@ def prepare_pairs(
     min_onsets: int = 1,
     categories: list[str] | None = None,
     midi_files: list[Path] | None = None,
+    first_patch_only: bool = False,
 ) -> dict:
     input_root = pairs_dir / "input"
     target_root = pairs_dir / "target"
@@ -104,6 +108,7 @@ def prepare_pairs(
             mode=mode,
             min_onsets=min_onsets,
             bpm=bpm,
+            first_patch_only=first_patch_only,
         )
         stats["songs"].append(
             {

@@ -130,6 +130,7 @@ def prepare_all(
         PAIRS_SYNTHETIC,
         mode=mode,
         min_onsets=min_onsets,
+        first_patch_only=True,  # 8小節ちょうどでも patches:2 になるバグ回避
     )
 
     if not RAW_GUITAR_TECHS.is_dir():
