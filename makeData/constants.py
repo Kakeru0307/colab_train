@@ -71,11 +71,11 @@ STRUM_ARTICULATIONS = (
 )
 
 STRUM_ARTICULATION_WEIGHTS: dict[str, float] = {
-    "solid": 0.25,
-    "staccato": 0.25,
-    "mixed": 0.30,
+    "solid": 0.30,
+    "staccato": 0.30,
+    "mixed": 0.25,
     "sustained": 0.10,
-    "rests": 0.10,
+    "rests": 0.05,
 }
 
 # 1小節あたりの発音回数 N（1..16。中心 4–8 を厚く）

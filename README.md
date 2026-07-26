@@ -23,12 +23,30 @@ Stage 1 / Stage 2 は **同じ `--mode`** でパッチ化してください。�
 | `makeData/` | 合成 MIDI 生成（Colab 上で最大 6,000 本） |
 | `data/raw/guitar-techs/` | 生 MIDI（98 曲） |
 | `colab_train.ipynb` | 実行ノートブック |
+| `train_structure_prior.py` / `structure_prior.py` | WRIME→構造 prior 学習 |
+| `data/prior_pairs/accept.jsonl` | 人手ゲート済み prior 学習データ |
 | `checkpoints/` | 学習結果（Git push） |
 | `scripts/push_checkpoint.py` | Colab から checkpoint を GitHub へ push |
 
 **Git に含めない:** `data/pairs/`（**Colab 上でのみ** `prepare_all.py` が生成）
 
 推論・DAW 確認用の `generate_*.py` / `inference.py` は本リポジトリには置かず、ローカル `prttype/` を使う。
+
+## Structure Prior
+
+ノートの `TRAIN_PRIOR=True`（他は `False` 可）で実行。
+
+```bash
+python train_structure_prior.py \
+  --jsonl data/prior_pairs/accept.jsonl \
+  --checkpoint-dir checkpoints/structure_prior \
+  --epochs 80
+python scripts/push_checkpoint.py \
+  --ckpt checkpoints/structure_prior/prior_last.pt \
+  --message "structure prior"
+```
+
+ローカル同等: `prttype/scripts/train_structure_prior.py`（`manifests/accept.jsonl`）。
 
 ## ローカル vs Colab の役割
 
@@ -38,6 +56,7 @@ Stage 1 / Stage 2 は **同じ `--mode`** でパッチ化してください。�
 | **合成 MIDI 生成** | **Colab**（`prepare_all.py` が自動実行） |
 | **パッチ化（pairs）** | **Colab のみ**（ローカルで `prepare_dataset.py` は不要） |
 | Stage 1 / 2 学習 | Colab |
+| Structure Prior 学習 | Colab（またはローカル `prttype`） |
 | 推論・DAW 確認 | ローカル `prttype/` |
 
 ローカルで `python -m makeData.generate` して試すことはできますが、**学習用 pairs は Colab で作ってください**（容量・GPU 環境の都合）。
@@ -65,9 +84,9 @@ python prepare_all.py --synthetic-count 1000 --synthetic-seed 42 --mode downbeat
 ### 学習（二段階）
 
 ```bash
-# Stage 1: 合成（骨格 → フル）
+# Stage 1: 合成（骨格 → フル）— 検証は 5 epoch で十分、残すなら 8
 python train.py --pairs-dir data/pairs/synthetic \
-  --epochs 20 --batch-size 16 \
+  --epochs 5 --batch-size 16 \
   --checkpoint-dir checkpoints/stage1 --pos-weight 10
 
 # Stage 2: Guitar-TECHS

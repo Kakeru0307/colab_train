@@ -7,6 +7,7 @@ from pathlib import Path
 import muspy
 
 from makeData.builder import add_chord, build_music, make_guitar_track
+from makeData.chord_schedule import chord_slot, pitches_for_slot, skeleton_onset_ticks
 from makeData.constants import DEFAULT_BARS, TICKS_PER_BAR
 from makeData.progressions import (
     PROGRESSION_BY_NAME,
@@ -31,11 +32,13 @@ def build_backing_skeleton_music(
     bars: int = DEFAULT_BARS,
     bpm: float = 120.0,
     bars_per_chord: int = 1,
+    chords_per_bar: int = 1,
+    raise_odd_loop_last: bool = True,
     onset_duration: int = 2,
 ) -> muspy.Music:
-    """進行の各小節頭にコードトーンだけ置いた骨格 MIDI を作る。
+    """進行の各コード頭にコードトーンだけ置いた骨格 MIDI を作る。
 
-    これがバッキング生成モデルへの入力になる（元曲 MIDI は不要）。
+    chords_per_bar=2 のとき半小節（tick 0 と 8）にも置く。
     """
     spec = get_progression(progression) if isinstance(progression, str) else progression
     if bars < 8:
@@ -45,17 +48,24 @@ def build_backing_skeleton_music(
 
     track = make_guitar_track("BackingSkeleton")
     pitch_sets = progression_chord_pitch_sets(spec, key)
+    cpb = max(1, int(chords_per_bar))
+    bpc = 1 if cpb >= 2 else max(1, int(bars_per_chord))
+    onsets = skeleton_onset_ticks(chords_per_bar=cpb)
 
     for bar in range(bars):
-        chord_index = (bar // bars_per_chord) % len(pitch_sets)
-        pitches = pitch_sets[chord_index]
-        time = bar * TICKS_PER_BAR
-        add_chord(
-            track,
-            pitches,
-            time=time,
-            duration=onset_duration,
-        )
+        for tick in onsets:
+            slot = chord_slot(bar, tick, bars_per_chord=bpc, chords_per_bar=cpb)
+            pitches = pitches_for_slot(
+                pitch_sets, slot, raise_odd_loop_last=raise_odd_loop_last
+            )
+            if not pitches:
+                continue
+            add_chord(
+                track,
+                pitches,
+                time=bar * TICKS_PER_BAR + tick,
+                duration=onset_duration,
+            )
 
     music = build_music(track, bars=bars, tempo=float(bpm))
     return music
@@ -69,6 +79,8 @@ def save_backing_skeleton(
     bars: int = DEFAULT_BARS,
     bpm: float = 120.0,
     bars_per_chord: int = 1,
+    chords_per_bar: int = 1,
+    raise_odd_loop_last: bool = True,
 ) -> muspy.Music:
     music = build_backing_skeleton_music(
         progression=progression,
@@ -76,6 +88,8 @@ def save_backing_skeleton(
         bars=bars,
         bpm=bpm,
         bars_per_chord=bars_per_chord,
+        chords_per_bar=chords_per_bar,
+        raise_odd_loop_last=raise_odd_loop_last,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     muspy.write_midi(output_path, music)

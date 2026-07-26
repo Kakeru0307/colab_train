@@ -7,6 +7,7 @@ import random
 import muspy
 
 from .builder import add_chord, add_note, build_music, make_guitar_track
+from .chord_schedule import chord_slot, pitches_for_slot
 from .constants import (
     ATTACKS_PER_BAR_WEIGHTS,
     BAR_LENGTH_CHOICES,
@@ -167,32 +168,54 @@ def _strum_onset_duration(
     rng: random.Random,
     rest_indices: frozenset[int],
 ) -> int | None:
-    """onset 間ギャップに基づく duration。None は休符。"""
+    """onset 間ギャップに基づく duration。None は休符。
+
+    - ストローク間: 可能なとき休符 2 tick（聞こえる切れ目）
+    - 小節末: 伸ばしを既定。末の機械的 1tick 空きは稀
+    """
     n = len(onset_ticks)
     tick = onset_ticks[onset_index]
-    if onset_index + 1 < n:
+    is_last = onset_index == n - 1
+    if not is_last:
         gap = onset_ticks[onset_index + 1] - tick
     else:
         gap = max(1, ticks_per_bar - tick)
 
-    full = max(gap - 1, 1)
+    # gap>=3 → 2 tick 休符、それ未満は 1 tick 休符が上限
+    separated = max(gap - 2, 1) if gap >= 3 else max(gap - 1, 1)
+    tight = max(gap - 1, 1)  # 旧: 常に 1 tick 空き
     short = max(1, min(2, max(gap // 2, 1)))
 
     if articulation == "solid":
-        return full
+        if is_last:
+            if rng.random() < 0.15:
+                return tight
+            return gap
+        return separated
     if articulation == "staccato":
+        # 小節内は短く、末はだいたい埋める（毎小節末ギャップを避ける）
+        if is_last and rng.random() < 0.75:
+            return gap
         return short
     if articulation == "mixed":
-        return short if (onset_index % 2 == 1) else full
+        if is_last:
+            if rng.random() < 0.2:
+                return tight
+            return gap
+        return short if (onset_index % 2 == 1) else separated
     if articulation == "sustained":
         if onset_index % 2 != 0:
             return None
-        return max(full, min(ticks_per_bar - tick, max(gap * 2 - 1, full)))
+        if is_last:
+            return gap
+        return max(separated, min(ticks_per_bar - tick, max(gap * 2 - 2, separated)))
     if articulation == "rests":
         if onset_index in rest_indices:
             return None
-        return short if rng.random() < 0.35 else full
-    return full
+        if is_last and rng.random() < 0.7:
+            return gap
+        return short if rng.random() < 0.35 else separated
+    return separated if not is_last else gap
 
 
 def _choose_rest_indices(rng: random.Random, n: int) -> frozenset[int]:
@@ -219,16 +242,26 @@ def _write_strum_bars(
     onset_ticks: list[int],
     articulation: str,
     rng: random.Random,
+    chords_per_bar: int = 1,
+    raise_odd_loop_last: bool = True,
 ) -> None:
     rest_indices = (
         _choose_rest_indices(rng, len(onset_ticks))
         if articulation == "rests"
         else frozenset()
     )
+    cpb = max(1, int(chords_per_bar))
+    bpc = 1 if cpb >= 2 else max(1, int(bars_per_chord))
     for bar in range(bars):
-        chord_index = (bar // bars_per_chord) % len(pitch_sets)
-        pitches = pitch_sets[chord_index]
         for oi, tick in enumerate(onset_ticks):
+            slot = chord_slot(bar, tick, bars_per_chord=bpc, chords_per_bar=cpb)
+            pitches = pitches_for_slot(
+                list(pitch_sets),
+                slot,
+                raise_odd_loop_last=raise_odd_loop_last,
+            )
+            if not pitches:
+                continue
             duration = _strum_onset_duration(
                 articulation,
                 onset_index=oi,
@@ -239,11 +272,14 @@ def _write_strum_bars(
             )
             if duration is None:
                 continue
+            # Don't ring across a half-bar chord change.
+            if cpb >= 2 and tick < TICKS_PER_BAR // 2:
+                duration = min(duration, (TICKS_PER_BAR // 2) - tick)
             add_chord(
                 track,
                 pitches,
                 time=bar * TICKS_PER_BAR + tick,
-                duration=duration,
+                duration=max(1, duration),
             )
 
 
@@ -333,6 +369,8 @@ def generate_progression_strum(
     bpm: int,
     bars: int = DEFAULT_BARS,
     bars_per_chord: int = 1,
+    chords_per_bar: int = 1,
+    raise_odd_loop_last: bool = True,
     articulation: str = "solid",
     attacks_per_bar: int | None = None,
     placement: str | None = None,
@@ -355,6 +393,8 @@ def generate_progression_strum(
         onset_ticks=onset_ticks,
         articulation=articulation,
         rng=rng,
+        chords_per_bar=chords_per_bar,
+        raise_odd_loop_last=raise_odd_loop_last,
     )
     return build_music(track, bars=bars, tempo=float(bpm))
 
@@ -366,20 +406,35 @@ def generate_progression_arpeggio(
     bpm: int,
     bars: int = DEFAULT_BARS,
     bars_per_chord: int = 1,
+    chords_per_bar: int = 1,
+    raise_odd_loop_last: bool = True,
 ) -> muspy.Music:
     """進行に沿って、コードごとにアルペジオ伴奏を生成する。"""
     track = make_guitar_track(f"prog_arp_{spec.name}")
     pitch_sets = progression_chord_pitch_sets(spec, key)
+    cpb = max(1, int(chords_per_bar))
+    bpc = 1 if cpb >= 2 else max(1, int(bars_per_chord))
 
     for bar in range(bars):
-        chord_index = (bar // bars_per_chord) % len(pitch_sets)
-        pitches = pitch_sets[chord_index]
-        notes_per_bar = len(pitches)
-        step = TICKS_PER_BAR // max(notes_per_bar, 1)
-        duration = max(step - 1, 2)
-        for index, pitch in enumerate(pitches):
-            time = bar * TICKS_PER_BAR + index * step
-            add_note(track, time=time, pitch=pitch, duration=duration)
+        # One arpeggio pass per chord slice in the bar.
+        slices = cpb if cpb >= 2 else 1
+        slice_len = TICKS_PER_BAR // slices
+        for s in range(slices):
+            tick0 = s * slice_len
+            slot = chord_slot(bar, tick0, bars_per_chord=bpc, chords_per_bar=cpb)
+            pitches = pitches_for_slot(
+                pitch_sets, slot, raise_odd_loop_last=raise_odd_loop_last
+            )
+            if not pitches:
+                continue
+            notes_per = len(pitches)
+            step = max(1, slice_len // max(notes_per, 1))
+            duration = max(step - 1, 1)
+            for index, pitch in enumerate(pitches):
+                time = bar * TICKS_PER_BAR + tick0 + index * step
+                if time >= bar * TICKS_PER_BAR + tick0 + slice_len:
+                    break
+                add_note(track, time=time, pitch=pitch, duration=duration)
 
     return build_music(track, bars=bars, tempo=float(bpm))
 
@@ -470,7 +525,10 @@ def generate_random_phrase(
     if pattern in ("progression_strum", "progression_arpeggio"):
         spec = choose_progression(rng)
         key = choose_key_for_progression(rng, spec)
-        bars_per_chord = rng.choice((1, 1, 1, 2))
+        # ~25% half-bar changes; then bars_per_chord stays 1
+        chords_per_bar = rng.choice((1, 1, 1, 2))
+        bars_per_chord = 1 if chords_per_bar >= 2 else rng.choice((1, 1, 1, 2))
+        raise_odd = rng.random() < 0.85
         if pattern == "progression_strum":
             articulation = choose_strum_articulation(rng)
             attacks = sample_attacks_for_bpm(bpm_value, rng)
@@ -482,6 +540,8 @@ def generate_random_phrase(
                 bpm=bpm_value,
                 bars=bars,
                 bars_per_chord=bars_per_chord,
+                chords_per_bar=chords_per_bar,
+                raise_odd_loop_last=raise_odd,
                 articulation=articulation,
                 onset_ticks=onset_ticks,
                 rng=rng,
@@ -493,6 +553,8 @@ def generate_random_phrase(
                 "mode": spec.mode,
                 "key": key,
                 "bars_per_chord": bars_per_chord,
+                "chords_per_bar": chords_per_bar,
+                "raise_odd_loop_last": raise_odd,
                 "articulation": articulation,
                 "attacks_per_bar": attacks,
                 "placement": placement,
@@ -506,6 +568,8 @@ def generate_random_phrase(
             bpm=bpm_value,
             bars=bars,
             bars_per_chord=bars_per_chord,
+            chords_per_bar=chords_per_bar,
+            raise_odd_loop_last=raise_odd,
         )
         pitch_sets = progression_chord_pitch_sets(spec, key)
         arp_notes = len(pitch_sets[0]) if pitch_sets else 0
@@ -516,6 +580,8 @@ def generate_random_phrase(
             "mode": spec.mode,
             "key": key,
             "bars_per_chord": bars_per_chord,
+            "chords_per_bar": chords_per_bar,
+            "raise_odd_loop_last": raise_odd,
             "arp_notes_per_bar": arp_notes,
             "bpm": bpm_value,
             "bars": bars,
