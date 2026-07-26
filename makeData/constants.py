@@ -51,14 +51,14 @@ PATTERN_TYPES = (
     "scale_down",
 )
 
-# 進行を主。strum / arpeggio を同比重（刻み語彙を両チャンネルに）
+# バッキングはストローク専用（arp/scale は 0。総量は SYNTHETIC_COUNT のまま）
 PATTERN_WEIGHTS: dict[str, float] = {
-    "progression_strum": 0.45,
-    "progression_arpeggio": 0.45,
-    "chord_strum": 0.04,
-    "arpeggio": 0.03,
-    "scale_up": 0.015,
-    "scale_down": 0.015,
+    "progression_strum": 1.0,
+    "progression_arpeggio": 0.0,
+    "chord_strum": 0.0,
+    "arpeggio": 0.0,
+    "scale_up": 0.0,
+    "scale_down": 0.0,
 }
 
 # バッキング・ストロークの音価型（1曲=1ノリ）
