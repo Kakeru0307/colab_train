@@ -78,24 +78,9 @@ STRUM_ARTICULATION_WEIGHTS: dict[str, float] = {
     "rests": 0.05,
 }
 
-# 1小節あたりの発音回数 N（1..16。中心 4–8 を厚く）
+# 1小節あたりの発音回数 N（実験: 8分刻み固定。他は変えない）
 ATTACKS_PER_BAR_WEIGHTS: dict[int, float] = {
-    1: 1,
-    2: 2,
-    3: 3,
-    4: 5,
-    5: 5,
-    6: 6,
-    7: 4,
-    8: 6,
-    9: 3,
-    10: 2,
-    11: 1,
-    12: 2,
-    13: 1,
-    14: 1,
-    15: 1,
-    16: 1,
+    8: 1.0,
 }
 
 PLACEMENT_TYPES = (
