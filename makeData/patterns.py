@@ -142,12 +142,13 @@ def resolve_onset_ticks(
                 extras.append(t)
         return sorted(extras[:extra] + back_pool)
 
-    # even（既定）
+    # even（既定）: グリッド均等配置 0, T/n, 2T/n, ...
+    # 例: n=8, T=16 → 0,2,4,6,8,10,12,14
     if n == 1:
         return [0]
     picked = []
     for i in range(n):
-        t = int(round(i * (ticks_per_bar - 1) / (n - 1))) if n > 1 else 0
+        t = int(i * ticks_per_bar / n)
         t = max(0, min(ticks_per_bar - 1, t))
         if t not in picked:
             picked.append(t)
