@@ -92,15 +92,15 @@ PLACEMENT_TYPES = (
 )
 
 PLACEMENT_WEIGHTS: dict[str, float] = {
-    "even": 0.30,
-    "front": 0.20,
-    "back": 0.15,
-    "offbeat": 0.20,
-    "sparse_random": 0.15,
+    "even": 1.0,
+    "front": 0.0,
+    "back": 0.0,
+    "offbeat": 0.0,
+    "sparse_random": 0.0,
 }
 
-# Stage 1 目標 B 案（8 小節 MIDI ≒ 1 パッチ）
-DEFAULT_SYNTHETIC_COUNT = 15000
+# テスト: 2000（even固定で刻みを確認したら 15000 に戻す）
+DEFAULT_SYNTHETIC_COUNT = 2000
 
 BPM_RANGE = (60, 150)
 
