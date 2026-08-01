@@ -440,6 +440,41 @@ def generate_progression_arpeggio(
     return build_music(track, bars=bars, tempo=float(bpm))
 
 
+_LEAD_RHYTHM_MOTIFS: tuple[tuple[tuple[int, int], ...], ...] = (
+    # (2小節内tick, duration)。末尾を空けてフレーズ間に息継ぎを作る。
+    ((0, 4), (6, 2), (10, 2), (12, 4), (20, 2), (23, 1), (26, 2)),
+    ((0, 2), (3, 1), (6, 4), (12, 2), (16, 4), (22, 2), (27, 1)),
+    ((0, 6), (8, 2), (11, 1), (14, 2), (20, 4), (26, 2)),
+)
+
+_LEAD_CONTOURS: tuple[tuple[int, ...], ...] = (
+    (0, 1, 2, 3, 2, 1, 0),
+    (0, 2, 1, 3, 4, 2, 1),
+    (0, -1, 1, 2, 1, -1, 0),
+)
+
+
+def _nearest_chord_scale_index(
+    scale: list[int],
+    chord_pcs: set[int],
+    around: int,
+) -> int:
+    candidates = [i for i, pitch in enumerate(scale) if pitch % 12 in chord_pcs]
+    if not candidates:
+        return max(0, min(len(scale) - 1, around))
+    return min(candidates, key=lambda i: abs(i - around))
+
+
+def _fit_contour(contour: tuple[int, ...], count: int) -> list[int]:
+    """音数に合わせて輪郭を循環せず補間し、末尾は着地点へ戻す。"""
+    if count <= len(contour):
+        return list(contour[:count])
+    out = list(contour)
+    while len(out) < count:
+        out.insert(-1, out[-2])
+    return out
+
+
 def generate_progression_lead(
     *,
     spec: ProgressionSpec,
@@ -448,10 +483,15 @@ def generate_progression_lead(
     bars: int = DEFAULT_BARS,
     bars_per_chord: int = 1,
     rng: random.Random | None = None,
-    rest_prob: float = 0.18,
+    rest_prob: float = 0.12,
     leap_prob: float = 0.15,
 ) -> muspy.Music:
-    """進行のスケール上で単音リードフレーズを生成する。"""
+    """反復・変奏・息継ぎのある、進行スケール上の単音リードを生成する。
+
+    2小節モチーフを基本単位にし、A → A' → B → cadence の流れを作る。
+    onset は四分・八分・付点・16分相当を混ぜ、各モチーフ末尾に休符を残す。
+    A' はAの輪郭とリズムを再利用しつつ、終止音だけ現在コードへ着地させる。
+    """
     rng = rng or random.Random()
     track = make_guitar_track(f"prog_lead_{spec.name}")
     scale = scale_pitches(key, spec.mode, base_octave=4)
@@ -460,28 +500,75 @@ def generate_progression_lead(
     pitch_sets = progression_chord_pitch_sets(spec, key)
     chord_pc_sets = [set(p % 12 for p in ps) for ps in pitch_sets]
 
-    step = TICKS_PER_BAR // 8
-    idx = len(scale) // 2
+    phrase_ticks = TICKS_PER_BAR * 2
+    center = len(scale) // 2
+    base_rhythm = rng.choice(_LEAD_RHYTHM_MOTIFS)
+    base_contour = rng.choice(_LEAD_CONTOURS)
 
-    for bar in range(bars):
-        chord_pcs = chord_pc_sets[(bar // bars_per_chord) % len(chord_pc_sets)]
-        for e in range(8):
-            pos = bar * TICKS_PER_BAR + e * step
-            is_strong = (e * step) % BEAT_TICKS == 0
-            if not is_strong and rng.random() < rest_prob:
+    phrase_count = (bars + 1) // 2
+    for phrase_index in range(phrase_count):
+        phrase_start = phrase_index * phrase_ticks
+        if phrase_start >= bars * TICKS_PER_BAR:
+            break
+
+        role = phrase_index % 4
+        if role in (0, 1):  # A / A': 同じ形を認識できる程度に反復
+            rhythm = list(base_rhythm)
+            contour = _fit_contour(base_contour, len(rhythm))
+            if role == 1 and len(contour) >= 3:
+                contour[-2] += rng.choice((-1, 1))
+        elif role == 2:  # B: 別の輪郭
+            rhythm = list(rng.choice(_LEAD_RHYTHM_MOTIFS))
+            contour = _fit_contour(rng.choice(_LEAD_CONTOURS), len(rhythm))
+            if rng.random() < leap_prob and len(contour) >= 4:
+                contour[len(contour) // 2] += rng.choice((-2, 2))
+        else:  # cadence: 音数を減らし、長い着地と息継ぎ
+            rhythm = [(0, 4), (6, 2), (12, 4), (20, 6)]
+            contour = [0, 1, -1, 0]
+
+        first_bar = phrase_start // TICKS_PER_BAR
+        first_chord = chord_pc_sets[
+            (first_bar // bars_per_chord) % len(chord_pc_sets)
+        ]
+        anchor = _nearest_chord_scale_index(scale, first_chord, center)
+
+        kept: list[tuple[int, int, int]] = []
+        for event_index, ((offset, duration), delta) in enumerate(
+            zip(rhythm, contour)
+        ):
+            pos = phrase_start + offset
+            if pos >= bars * TICKS_PER_BAR:
                 continue
-            if is_strong:
-                cand = [i for i in range(len(scale)) if scale[i] % 12 in chord_pcs]
-                if cand:
-                    idx = min(cand, key=lambda i: abs(i - idx))
-            else:
-                span = rng.randint(2, 4) if rng.random() < leap_prob else 1
-                idx = max(0, min(len(scale) - 1, idx + rng.choice((-1, 1)) * span))
+            # 内部音だけを少量抜き、モチーフの頭と終止は必ず残す。
+            if (
+                0 < event_index < len(rhythm) - 1
+                and rng.random() < rest_prob
+            ):
+                continue
+            note_index = max(0, min(len(scale) - 1, anchor + delta))
+            kept.append((pos, duration, note_index))
+
+        if not kept:
+            continue
+
+        # フレーズ終止は、その時点のコードトーンへ最短で着地させる。
+        last_pos, last_duration, last_index = kept[-1]
+        last_bar = last_pos // TICKS_PER_BAR
+        last_chord = chord_pc_sets[
+            (last_bar // bars_per_chord) % len(chord_pc_sets)
+        ]
+        kept[-1] = (
+            last_pos,
+            last_duration,
+            _nearest_chord_scale_index(scale, last_chord, last_index),
+        )
+
+        for pos, duration, note_index in kept:
             add_note(
                 track,
                 time=pos,
-                pitch=scale[idx],
-                duration=step,
+                pitch=scale[note_index],
+                duration=duration,
                 velocity=DEFAULT_VELOCITY,
             )
 
