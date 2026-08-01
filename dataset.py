@@ -1,4 +1,4 @@
-"""パッチ画像の Dataset / DataLoader（入力は tonal11 + BPM cond1）。"""
+"""パッチ Dataset（通常: tonal11+BPM1、lead: さらにpower attack mask1）。"""
 
 from __future__ import annotations
 
@@ -19,9 +19,16 @@ class PatchPairDataset(Dataset):
     無い場合は中立 0.5（旧ペア互換・非推奨）。
     """
 
-    def __init__(self, input_dir: str | Path, target_dir: str | Path | None = None):
+    def __init__(
+        self,
+        input_dir: str | Path,
+        target_dir: str | Path | None = None,
+        *,
+        require_power_cond: bool = False,
+    ):
         self.input_dir = Path(input_dir)
         self.target_dir = Path(target_dir) if target_dir else self.input_dir
+        self.require_power_cond = require_power_cond
         self.files = sorted(self.input_dir.rglob("*_tonal.npy"))
         if not self.files:
             raise FileNotFoundError(f"パッチが見つかりません: {self.input_dir}")
@@ -44,6 +51,32 @@ class PatchPairDataset(Dataset):
             return np.full((1, height, width), np.float32(unit), dtype=np.float32)
         return np.full((1, height, width), np.float32(0.5), dtype=np.float32)
 
+    def _load_power_cond(
+        self,
+        input_path: Path,
+        height: int,
+        width: int,
+    ) -> np.ndarray | None:
+        power_path = input_path.with_name(
+            input_path.name.replace("_tonal.npy", "_power.npy")
+        )
+        if not power_path.is_file():
+            if self.require_power_cond:
+                raise FileNotFoundError(
+                    f"power maskがありません。lead pairsを再生成してください: "
+                    f"{power_path}"
+                )
+            return None
+        arr = np.asarray(np.load(power_path), dtype=np.float32)
+        if arr.shape == (height, width):
+            return arr.reshape(1, height, width)
+        if arr.shape == (1, height, width):
+            return arr
+        raise ValueError(
+            f"power mask shape mismatch: {power_path} {arr.shape} "
+            f"!= {(height, width)}"
+        )
+
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         input_path = self.files[idx]
         rel_path = input_path.relative_to(self.input_dir)
@@ -56,7 +89,13 @@ class PatchPairDataset(Dataset):
             target_arr = normalize_pianoroll(np.load(target_path))
 
         cond = self._load_cond(input_path, input_arr.shape[1], input_arr.shape[2])
-        model_in = np.concatenate([input_arr.astype(np.float32), cond], axis=0)
+        channels = [input_arr.astype(np.float32), cond]
+        power = self._load_power_cond(
+            input_path, input_arr.shape[1], input_arr.shape[2]
+        )
+        if power is not None:
+            channels.append(power)
+        model_in = np.concatenate(channels, axis=0)
 
         return (
             torch.from_numpy(model_in),

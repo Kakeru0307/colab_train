@@ -10,10 +10,12 @@ from .builder import add_chord, add_note, build_music, make_guitar_track
 from .chord_schedule import chord_slot, pitches_for_slot
 from .constants import (
     ATTACKS_PER_BAR_WEIGHTS,
+    BACKING_POWER_CHORD_PROBABILITY,
     BAR_LENGTH_CHOICES,
     BEAT_TICKS,
     DEFAULT_BARS,
     DEFAULT_VELOCITY,
+    LEAD_POWER_CHORD_PHRASE_PROBABILITY,
     PATTERN_WEIGHTS,
     PLACEMENT_WEIGHTS,
     STRUM_ARTICULATION_WEIGHTS,
@@ -23,9 +25,10 @@ from .progressions import (
     PROGRESSIONS,
     ProgressionSpec,
     progression_chord_pitch_sets,
+    resolve_progression_chords,
 )
 from .rhythm import sample_attacks_for_bpm
-from .voicings import chord_pitches, scale_pitches
+from .voicings import chord_pitches, power_chord_pitches, scale_pitches
 
 
 def choose_strum_articulation(rng: random.Random) -> str:
@@ -238,6 +241,9 @@ def _write_strum_bars(
     track: muspy.Track,
     *,
     pitch_sets: list[list[int]] | list,
+    power_pitch_sets: list[list[int]] | None = None,
+    power_chord_probability: float = 0.0,
+    power_chord_onsets: set[int] | None = None,
     bars: int,
     bars_per_chord: int,
     onset_ticks: list[int],
@@ -256,8 +262,13 @@ def _write_strum_bars(
     for bar in range(bars):
         for oi, tick in enumerate(onset_ticks):
             slot = chord_slot(bar, tick, bars_per_chord=bpc, chords_per_bar=cpb)
+            use_power = (
+                power_pitch_sets is not None
+                and rng.random() < power_chord_probability
+            )
+            source_pitch_sets = power_pitch_sets if use_power else list(pitch_sets)
             pitches = pitches_for_slot(
-                list(pitch_sets),
+                source_pitch_sets,
                 slot,
                 raise_odd_loop_last=raise_odd_loop_last,
             )
@@ -276,10 +287,13 @@ def _write_strum_bars(
             # Don't ring across a half-bar chord change.
             if cpb >= 2 and tick < TICKS_PER_BAR // 2:
                 duration = min(duration, (TICKS_PER_BAR // 2) - tick)
+            onset_time = bar * TICKS_PER_BAR + tick
+            if use_power and power_chord_onsets is not None:
+                power_chord_onsets.add(onset_time)
             add_chord(
                 track,
                 pitches,
-                time=bar * TICKS_PER_BAR + tick,
+                time=onset_time,
                 duration=max(1, duration),
             )
 
@@ -376,12 +390,18 @@ def generate_progression_strum(
     attacks_per_bar: int | None = None,
     placement: str | None = None,
     onset_ticks: list[int] | None = None,
+    power_chord_probability: float = BACKING_POWER_CHORD_PROBABILITY,
+    power_chord_onsets: set[int] | None = None,
     rng: random.Random | None = None,
 ) -> muspy.Music:
-    """進行に沿ってストローク伴奏を生成（1曲=1ノリの N×配置）。"""
+    """進行ストロークを生成。既定で発音の70%をパワーコードにする。"""
     rng = rng or random.Random()
     track = make_guitar_track(f"prog_strum_{spec.name}")
     pitch_sets = progression_chord_pitch_sets(spec, key)
+    power_pitch_sets = [
+        power_chord_pitches(root)
+        for root, _ in resolve_progression_chords(spec, key)
+    ]
     if onset_ticks is None:
         n = attacks_per_bar if attacks_per_bar is not None else choose_attacks_per_bar(rng)
         place = placement if placement is not None else choose_placement(rng)
@@ -389,6 +409,9 @@ def generate_progression_strum(
     _write_strum_bars(
         track,
         pitch_sets=pitch_sets,
+        power_pitch_sets=power_pitch_sets,
+        power_chord_probability=power_chord_probability,
+        power_chord_onsets=power_chord_onsets,
         bars=bars,
         bars_per_chord=bars_per_chord,
         onset_ticks=onset_ticks,
@@ -398,6 +421,25 @@ def generate_progression_strum(
         raise_odd_loop_last=raise_odd_loop_last,
     )
     return build_music(track, bars=bars, tempo=float(bpm))
+
+
+def sample_backing_power_chord_onsets(
+    *,
+    bars: int,
+    bpm: float,
+    rng: random.Random,
+    probability: float = BACKING_POWER_CHORD_PROBABILITY,
+) -> set[int]:
+    """lead条件用に、現行backing分布相当のパワーコードattack時刻を標本化する。"""
+    attacks = sample_attacks_for_bpm(bpm, rng)
+    placement = choose_placement(rng)
+    ticks = resolve_onset_ticks(attacks, placement, rng=rng)
+    return {
+        bar * TICKS_PER_BAR + tick
+        for bar in range(bars)
+        for tick in ticks
+        if rng.random() < probability
+    }
 
 
 def generate_progression_arpeggio(
@@ -485,6 +527,8 @@ def generate_progression_lead(
     rng: random.Random | None = None,
     rest_prob: float = 0.12,
     leap_prob: float = 0.15,
+    blocked_power_onsets: set[int] | frozenset[int] | None = None,
+    power_chord_phrase_probability: float = LEAD_POWER_CHORD_PHRASE_PROBABILITY,
 ) -> muspy.Music:
     """反復・変奏・息継ぎのある、進行スケール上の単音リードを生成する。
 
@@ -499,6 +543,11 @@ def generate_progression_lead(
         scale = scale_pitches(key, spec.mode)
     pitch_sets = progression_chord_pitch_sets(spec, key)
     chord_pc_sets = [set(p % 12 for p in ps) for ps in pitch_sets]
+    power_pitch_sets = [
+        power_chord_pitches(root)
+        for root, _ in resolve_progression_chords(spec, key)
+    ]
+    blocked = blocked_power_onsets or frozenset()
 
     phrase_ticks = TICKS_PER_BAR * 2
     center = len(scale) // 2
@@ -563,14 +612,37 @@ def generate_progression_lead(
             _nearest_chord_scale_index(scale, last_chord, last_index),
         )
 
+        power_pos: int | None = None
+        if rng.random() < power_chord_phrase_probability:
+            # backingのpower chordと同時attackしない。長さ2tick以上を優先。
+            candidates = [
+                pos
+                for pos, duration, _ in kept
+                if pos not in blocked and duration >= 2
+            ]
+            if candidates:
+                power_pos = candidates[-1] if role == 3 else rng.choice(candidates)
+
         for pos, duration, note_index in kept:
-            add_note(
-                track,
-                time=pos,
-                pitch=scale[note_index],
-                duration=duration,
-                velocity=DEFAULT_VELOCITY,
-            )
+            if pos == power_pos:
+                bar = pos // TICKS_PER_BAR
+                chord_index = (bar // bars_per_chord) % len(power_pitch_sets)
+                for pitch in power_pitch_sets[chord_index]:
+                    add_note(
+                        track,
+                        time=pos,
+                        pitch=pitch,
+                        duration=duration,
+                        velocity=DEFAULT_VELOCITY,
+                    )
+            else:
+                add_note(
+                    track,
+                    time=pos,
+                    pitch=scale[note_index],
+                    duration=duration,
+                    velocity=DEFAULT_VELOCITY,
+                )
 
     return build_music(track, bars=bars, tempo=float(bpm))
 
@@ -647,6 +719,7 @@ def generate_random_phrase(
                 "attacks_per_bar": attacks,
                 "placement": placement,
                 "onset_ticks": onset_ticks,
+                "power_chord_probability": BACKING_POWER_CHORD_PROBABILITY,
                 "bpm": bpm_value,
                 "bars": bars,
             }

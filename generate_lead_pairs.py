@@ -1,12 +1,12 @@
 """リード学習用の input/target パッチペアを生成する。
 
-backing と違い、input（進行のコードトーン骨格）と target（単音リード）を
-別々に生成して対にする。
-  input  : progression_input.build_backing_skeleton_music（小節頭コードトーン）
-  target : makeData.patterns.generate_progression_lead（スケール上の単音リード）
+backingと別checkpointだが、backing power chord attack maskを条件共有する。
+  input  : コード骨格11ch + BPM 1ch + power attack mask 1ch
+  target : 単音主体＋一部power chordのフレーズ型リード
 
 出力形式は prepare_dataset.py と同じ:
   <pairs_dir>/input/<song_id>/bar####_tonal.npy
+  <pairs_dir>/input/<song_id>/bar####_power.npy
   <pairs_dir>/target/<song_id>/bar####_tonal.npy
 """
 
@@ -22,8 +22,12 @@ import muspy
 import numpy as np
 
 from makeData.constants import BPM_RANGE, DEFAULT_BARS, KEYS
-from makeData.patterns import choose_progression, generate_progression_lead
-from midi_to_patch import MidiPatch, midi_to_patches
+from makeData.patterns import (
+    choose_progression,
+    generate_progression_lead,
+    sample_backing_power_chord_onsets,
+)
+from midi_to_patch import PATCH_TICKS, TICKS_PER_BAR, MidiPatch, midi_to_patches
 from progression_input import build_backing_skeleton_music
 from density_cond import bpm_to_unit
 
@@ -37,6 +41,21 @@ def _music_to_patches(music: muspy.Music, tmp_midi: Path) -> list[MidiPatch]:
 
 def _has_onsets(patch: MidiPatch, min_onsets: int) -> bool:
     return int((patch.tonal_chw == 1).sum()) >= min_onsets
+
+
+def _power_mask_for_patch(
+    blocked_onsets: set[int],
+    *,
+    bar_index: int,
+) -> np.ndarray:
+    """(time,pitch) mask。1の時刻ではlead power chord attackを避ける。"""
+    mask = np.zeros((PATCH_TICKS, 128), dtype=np.uint8)
+    start = bar_index * TICKS_PER_BAR
+    for absolute_time in blocked_onsets:
+        relative = absolute_time - start
+        if 0 <= relative < PATCH_TICKS:
+            mask[relative, :] = 1
+    return mask
 
 
 def generate_lead_pairs(
@@ -61,10 +80,16 @@ def generate_lead_pairs(
             key = rng.choice(KEYS)
             bpm = rng.randint(*BPM_RANGE)
             bars_per_chord = rng.choice((1, 1, 1, 2))
+            blocked_power_onsets = sample_backing_power_chord_onsets(
+                bars=bars,
+                bpm=bpm,
+                rng=rng,
+            )
 
             target_music = generate_progression_lead(
                 spec=spec, key=key, bpm=bpm, bars=bars,
                 bars_per_chord=bars_per_chord, rng=rng,
+                blocked_power_onsets=blocked_power_onsets,
             )
             input_music = build_backing_skeleton_music(
                 progression=spec, key=key, bars=bars, bpm=bpm,
@@ -89,9 +114,22 @@ def generate_lead_pairs(
                 np.save(in_dir / f"{stem}_tonal.npy", inp.tonal_chw.astype(np.uint8, copy=False))
                 np.save(tg_dir / f"{stem}_tonal.npy", tgt.tonal_chw.astype(np.uint8, copy=False))
                 np.save(in_dir / f"{stem}_cond.npy", np.float32(bpm_to_unit(bpm)))
+                np.save(
+                    in_dir / f"{stem}_power.npy",
+                    _power_mask_for_patch(
+                        blocked_power_onsets,
+                        bar_index=tgt.bar_index,
+                    ),
+                )
                 saved += 1
 
-            stats["songs"].append({"song_id": song_id, "progression": spec.name, "key": key, "patches": saved})
+            stats["songs"].append({
+                "song_id": song_id,
+                "progression": spec.name,
+                "key": key,
+                "patches": saved,
+                "blocked_power_onsets": len(blocked_power_onsets),
+            })
             stats["total_patches"] += saved
             if (i + 1) % 200 == 0:
                 print(f"  {i + 1}/{count} 本 ... 累計 {stats['total_patches']} パッチ")

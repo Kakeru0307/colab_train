@@ -8,6 +8,12 @@ BEAT_TICKS = 4
 DEFAULT_BARS = 8
 DEFAULT_VELOCITY = 80
 
+# パワーコードを含む割合（発音／フレーズ単位）
+BACKING_POWER_CHORD_PROBABILITY = 0.70
+LEAD_POWER_CHORD_PHRASE_PROBABILITY = 0.40
+# solo は未実装。将来のデータ生成で使う確定方針。
+SOLO_POWER_CHORD_PHRASE_PROBABILITY = 0.20
+
 KEYS = ("C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B")
 
 KEY_TO_SEMITONE = {

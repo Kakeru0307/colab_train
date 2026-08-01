@@ -77,6 +77,7 @@ def train(
     onset_weight: float = 1.0,
     midbar_onset_bonus: float = 1.0,
     resume: Path | None = None,
+    require_power_cond: bool = False,
 ) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -88,11 +89,21 @@ def train(
             raise FileNotFoundError(f"パッチが見つかりません: {input_dir}")
         dataset = SinglePatchDataset(patch_files[0], length=32)
     else:
-        dataset = PatchPairDataset(input_dir, target_dir)
+        dataset = PatchPairDataset(
+            input_dir,
+            target_dir,
+            require_power_cond=require_power_cond,
+        )
     print(f"学習パッチ数: {len(dataset)}")
+    sample_input, _ = dataset[0]
+    input_channels = int(sample_input.shape[0])
+    print(f"入力チャンネル数: {input_channels}")
 
     dataloader = get_dataloader(dataset, batch_size=batch_size, shuffle=True)
-    model = build_unet(encoder_weights=encoder_weights).to(device)
+    model = build_unet(
+        in_channels=input_channels,
+        encoder_weights=encoder_weights,
+    ).to(device)
     if resume is not None:
         checkpoint = torch.load(resume, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint["model_state_dict"])
@@ -129,7 +140,7 @@ def train(
             "epochs": epochs,
             "lr": lr,
             "model_type": "unet",
-            "in_channels": 12,
+            "in_channels": input_channels,
             "out_channels": 11,
         },
         ckpt_path,
@@ -189,6 +200,11 @@ def main() -> None:
         default=None,
         help="例: imagenet（ネットワーク接続が必要）",
     )
+    parser.add_argument(
+        "--require-power-cond",
+        action="store_true",
+        help="全inputに*_power.npyを必須化（13ch lead学習用）",
+    )
     args = parser.parse_args()
 
     data_dir = args.data_dir
@@ -210,6 +226,7 @@ def main() -> None:
         onset_weight=args.onset_weight,
         midbar_onset_bonus=args.midbar_onset_bonus,
         resume=args.resume,
+        require_power_cond=args.require_power_cond,
     )
 
 

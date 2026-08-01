@@ -18,6 +18,16 @@ def chord_pitches(key: str, quality: str, *, base_octave: int = 3) -> list[int]:
     return _clamp_guitar_range(pitches)
 
 
+def power_chord_pitches(key: str, *, base_octave: int = 3) -> list[int]:
+    """ルート＋完全5度の2音パワーコードをギター音域内で返す。"""
+    root = KEY_TO_SEMITONE[key] + base_octave * 12
+    while root < GUITAR_PITCH_MIN:
+        root += 12
+    while root + 7 > GUITAR_PITCH_MAX:
+        root -= 12
+    return [root, root + 7]
+
+
 def scale_pitches(key: str, mode: str, *, base_octave: int = 3) -> list[int]:
     root = KEY_TO_SEMITONE[key] + base_octave * 12
     intervals = SCALE_INTERVALS[mode]
