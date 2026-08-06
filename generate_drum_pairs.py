@@ -1,10 +1,9 @@
 """ドラム学習用の input/target パッチペアを生成する。
 
-input  : ギターコード骨格 (downbeat_chord tonal 11ch) + BPM cond
+input  : ギターコード骨格 (downbeat_chord tonal 11ch) + BPM cond + beat one-hot id
 target : ドラムパターン (*_drum.npy, shape (1,128,128), 0/1 二値)
 
-bass と同一の乱数派生で progression/key/bpm/energy を揃える想定だが、
-単体実行でも独立に学習ペアを生成できる。
+beat_type を均等サンプリングし、BPM は BEAT_BPM_RANGE[beat_type] から取る。
 """
 
 from __future__ import annotations
@@ -14,20 +13,19 @@ import json
 import random
 import tempfile
 from pathlib import Path
-from typing import Literal
 
 import muspy
 import numpy as np
 
 from density_cond import bpm_to_unit
-from makeData.constants import BPM_RANGE, DEFAULT_BARS, KEYS
-from makeData.drum import generate_drum_pattern
+from makeData.constants import BEAT_BPM_RANGE, BEAT_TYPES, DEFAULT_BARS, KEYS
+from makeData.drum import beat_type_to_id, generate_drum_pattern
 from makeData.patterns import choose_progression
 from midi_to_patch import MidiPatch, midi_to_patches
 from progression_input import build_backing_skeleton_music
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-EnergyLevel = Literal["low", "mid", "high"]
+DEFAULT_COUNT = 7200
 
 
 def _music_to_patches(music: muspy.Music, tmp_midi: Path) -> list[MidiPatch]:
@@ -44,12 +42,9 @@ def _has_drum_hits(patch: MidiPatch, min_hits: int) -> bool:
     return int((patch.drum > 0).sum()) >= min_hits
 
 
-def _sample_energy(rng: random.Random, bpm: float) -> EnergyLevel:
-    if bpm < 85:
-        return rng.choices(("low", "mid", "high"), weights=(0.45, 0.40, 0.15), k=1)[0]
-    if bpm < 120:
-        return rng.choices(("low", "mid", "high"), weights=(0.20, 0.55, 0.25), k=1)[0]
-    return rng.choices(("low", "mid", "high"), weights=(0.10, 0.35, 0.55), k=1)[0]
+def _sample_bpm(rng: random.Random, beat_type: str) -> float:
+    lo, hi = BEAT_BPM_RANGE[beat_type]
+    return float(rng.randint(lo, hi))
 
 
 def generate_drum_pairs(
@@ -67,6 +62,7 @@ def generate_drum_pairs(
     stats: dict = {
         "mode": "drum",
         "pairs_dir": str(pairs_dir),
+        "beat_types": list(BEAT_TYPES),
         "songs": [],
         "total_patches": 0,
     }
@@ -76,16 +72,21 @@ def generate_drum_pairs(
         tmp_tg = Path(tmp) / "tg.mid"
         for i in range(count):
             song_rng = random.Random(rng.randint(0, 2**31 - 1))
+            # 型を均等サンプリング（型あたり count/12 程度）
+            beat_type = BEAT_TYPES[i % len(BEAT_TYPES)]
+            # 同じ型内で進行・キーをばらすため、型インデックスを混ぜてから RNG を回す
+            song_rng.randint(0, 2**31 - 1)
+
             spec = choose_progression(song_rng)
             key = song_rng.choice(KEYS)
-            bpm = float(song_rng.randint(*BPM_RANGE))
+            bpm = _sample_bpm(song_rng, beat_type)
             bars_per_chord = song_rng.choice((1, 1, 1, 2))
-            energy = _sample_energy(song_rng, bpm)
+            beat_id = beat_type_to_id(beat_type)
 
             target_music = generate_drum_pattern(
                 bpm=bpm,
                 bars=bars,
-                energy=energy,
+                beat_type=beat_type,
                 rng=song_rng,
             )
             input_music = build_backing_skeleton_music(
@@ -116,12 +117,12 @@ def generate_drum_pairs(
                     in_dir / f"{stem}_tonal.npy",
                     inp.tonal_chw.astype(np.uint8, copy=False),
                 )
-                # target は *_drum.npy（1ch 二値）。ファイル名は stem_drum.npy
                 np.save(
                     tg_dir / f"{stem}_drum.npy",
                     _binarize_drum(tgt.drum_chw),
                 )
                 np.save(in_dir / f"{stem}_cond.npy", np.float32(bpm_to_unit(bpm)))
+                np.save(in_dir / f"{stem}_beat.npy", np.int64(beat_id))
                 saved += 1
 
             stats["songs"].append(
@@ -130,7 +131,8 @@ def generate_drum_pairs(
                     "progression": spec.name,
                     "key": key,
                     "bpm": bpm,
-                    "energy": energy,
+                    "beat_type": beat_type,
+                    "beat_id": beat_id,
                     "patches": saved,
                 }
             )
@@ -153,7 +155,12 @@ def main() -> None:
         type=Path,
         default=SCRIPT_DIR / "data" / "pairs" / "drum",
     )
-    parser.add_argument("--count", type=int, default=2000, help="生成する曲数")
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=DEFAULT_COUNT,
+        help="生成する曲数（既定 7200 = 12型×600）",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--bars", type=int, default=DEFAULT_BARS)
     parser.add_argument("--min-hits", type=int, default=4)

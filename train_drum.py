@@ -1,6 +1,8 @@
-"""ドラム専用 U-Net 学習（in=12 tonal+BPM → out=1 drum、BCEWithLogitsLoss）。
+"""ドラム専用 U-Net 学習（in=24 tonal+BPM+beat → out=1 drum、BCEWithLogitsLoss）。
 
+入力: tonal11 + BPM1 + beat_type one-hot12 = 24ch。
 学習実行は Colab 側で行う。ローカルでのデフォルト実行は想定しない。
+旧 in=12 ckpt はチャネル不一致で非互換。
 """
 
 from __future__ import annotations

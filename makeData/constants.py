@@ -148,3 +148,35 @@ DRUM_TOM_FILLS = (
     DRUM_FLOOR_TOM_H,
     DRUM_FLOOR_TOM_L,
 )
+
+# ドラム型カタログ（骨格固定・装飾のみ変動）。U-Net 条件 one-hot の次元順。
+BEAT_TYPES = (
+    "eight_basic",
+    "four_floor",
+    "sixteen_basic",
+    "sixteen_funk",
+    "halftime",
+    "halftime_shuffle",
+    "ballad_sparse",
+    "shuffle_eight",
+    "disco",
+    "tresillo",
+    "reggae",
+    "metal_double",
+)
+
+# 型ごとの自然な BPM 帯（教師生成で共起を保証）
+BEAT_BPM_RANGE: dict[str, tuple[int, int]] = {
+    "ballad_sparse": (60, 95),
+    "reggae": (60, 100),
+    "halftime_shuffle": (70, 110),
+    "shuffle_eight": (70, 120),
+    "sixteen_funk": (70, 120),
+    "halftime": (80, 120),
+    "sixteen_basic": (80, 120),
+    "eight_basic": (80, 140),
+    "tresillo": (80, 130),
+    "disco": (110, 135),
+    "four_floor": (110, 150),
+    "metal_double": (120, 150),
+}
