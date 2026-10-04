@@ -73,8 +73,9 @@ MODES: tuple[str, ...] = ("major", "natural_minor")
 ENERGIES: tuple[str, ...] = ("low", "mid", "high")
 BARS_PER_CHORD: tuple[int, ...] = (1, 2)
 
-BPM_LO = 60.0
-BPM_HI = 150.0
+# VGMIDI 実テンポを折り込まず学習するため広め。推論時もこの範囲で unit↔BPM。
+BPM_LO = 40.0
+BPM_HI = 240.0
 
 _PROGRESSION_FAMILY: dict[str, str] = {
     **{

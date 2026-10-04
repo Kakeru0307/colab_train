@@ -1,12 +1,12 @@
-"""Train VA → structure prior on accept.jsonl (+ optional EMOPIA pairs).
+"""Train VA → structure prior on accept.jsonl (+ optional VGMIDI/EMOPIA pairs).
 
 Usage:
   python scripts/train_structure_prior.py \\
     --jsonl data/prior_pairs/manifests/accept.jsonl \\
-    --extra-jsonl data/emopia_pairs/structure_pairs.jsonl \\
+    --extra-jsonl data/vgmidi_pairs/structure_pairs.jsonl data/emopia_pairs/structure_pairs.jsonl \\
     --checkpoint-dir checkpoints/structure_prior
 
-extra 行で progression / key / bars_per_chord が無い項目は損失から除外する。
+extra 行で欠けた項目（BPM・energy・mode・key・prog・bpc）は損失から除外する。
 """
 
 from __future__ import annotations
@@ -84,14 +84,15 @@ def load_accept_rows(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-MASKABLE_HEADS: tuple[str, ...] = ("mode", "key", "prog", "bpc")
+MASKABLE_HEADS: tuple[str, ...] = ("bpm", "energy", "mode", "key", "prog", "bpc")
 
 
 def load_extra_rows(path: Path) -> list[dict[str, Any]]:
-    """EMOPIA 等の追加 JSONL を読む。
+    """VGMIDI / EMOPIA 等の追加 JSONL を読む。
 
-    mode / progression / key / bars_per_chord が無い行も受け付け、その項目は損失から除外する
-    （_label_mask に記録）。BPM・VA が無い行は捨てる。energy は BPM から決める。
+    無い項目は損失から除外する（_label_mask）。
+    VA が無い行は捨てる。BPM が無い行（EMOPIA）は bpm/energy をマスク。
+    energy は明示が無ければ BPM から決める（BPM も無いときは mid プレースホルダ）。
     """
     rows: list[dict[str, Any]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -99,14 +100,19 @@ def load_extra_rows(path: Path) -> list[dict[str, Any]]:
             continue
         row = json.loads(line)
         st = dict(row.get("structure") or {})
-        if st.get("bpm") is None or row.get("va") is None:
+        if row.get("va") is None:
             continue
+        has_bpm = st.get("bpm") is not None
         mask = {
+            "bpm": has_bpm,
+            "energy": st.get("energy") in ENERGIES or has_bpm,
             "mode": st.get("mode") in MODES,
             "prog": st.get("progression") in PROGRESSIONS,
             "key": st.get("key") in KEYS,
             "bpc": st.get("bars_per_chord") in BARS_PER_CHORD,
         }
+        if not has_bpm:
+            st["bpm"] = 120.0  # プレースホルダ（損失ではマスク）
         if not mask["mode"]:
             st["mode"] = MODES[0]
         if not mask["prog"]:
@@ -115,6 +121,9 @@ def load_extra_rows(path: Path) -> list[dict[str, Any]]:
             st["key"] = KEYS[0]
         if not mask["bpc"]:
             st["bars_per_chord"] = BARS_PER_CHORD[0]
+        if st.get("energy") not in ENERGIES:
+            bpm = float(st["bpm"])
+            st["energy"] = "low" if bpm < 90 else ("high" if bpm >= 120 else "mid")
         row["structure"] = st
         row["_label_mask"] = mask
         rows.append(row)
@@ -162,6 +171,7 @@ class PriorPairDataset(Dataset):
             item[f"{head}_mask"] = torch.tensor(
                 1.0 if label_mask.get(head, True) else 0.0, dtype=torch.float32
             )
+        # accept 行は全ヘッド学習。extra で欠けた項目だけ 0。
         return item
 
 
@@ -196,7 +206,6 @@ def batch_loss(
     batch: dict[str, torch.Tensor],
     *,
     ce: nn.Module,
-    mse: nn.Module,
 ) -> tuple[torch.Tensor, dict[str, float]]:
     out = model(batch["x"])
     bpm_pred = torch.sigmoid(out["bpm"])
@@ -206,9 +215,13 @@ def batch_loss(
         mask = batch[f"{head}_mask"]
         return (per * mask).sum() / mask.sum().clamp(min=1.0)
 
+    bpm_mask = batch["bpm_mask"]
+    bpm_per = (bpm_pred - batch["bpm"]) ** 2
+    bpm_loss = (bpm_per * bpm_mask).sum() / bpm_mask.sum().clamp(min=1.0)
+
     losses = {
-        "bpm": mse(bpm_pred, batch["bpm"]),
-        "energy": ce(out["energy"], batch["energy"]).mean(),
+        "bpm": bpm_loss,
+        "energy": masked_ce("energy"),
         "mode": masked_ce("mode"),
         "key": masked_ce("key"),
         "prog": masked_ce("prog"),
@@ -237,7 +250,6 @@ def evaluate(
     if len(loader.dataset) == 0:
         return {}
     ce = nn.CrossEntropyLoss(reduction="none")
-    mse = nn.MSELoss()
     totals: Counter[str] = Counter()
     n = 0
     correct: Counter[str] = Counter()
@@ -246,11 +258,13 @@ def evaluate(
     for batch in loader:
         batch = {k: v.to(device) for k, v in batch.items()}
         out = model(batch["x"])
-        _, stats = batch_loss(model, batch, ce=ce, mse=mse)
+        _, stats = batch_loss(model, batch, ce=ce)
         for k, v in stats.items():
             totals[k] += v
         pred_bpm = torch.sigmoid(out["bpm"])
-        bpm_abs += float((pred_bpm - batch["bpm"]).abs().sum().item())
+        bpm_mask = batch["bpm_mask"]
+        bpm_abs += float(((pred_bpm - batch["bpm"]).abs() * bpm_mask).sum().item())
+        counted["bpm"] += float(bpm_mask.sum().item())
         for name in ("energy", "mode", "key", "prog", "bpc"):
             hit = (out[name].argmax(-1) == batch[name]).float()
             mask = batch.get(f"{name}_mask", torch.ones_like(hit))
@@ -261,7 +275,7 @@ def evaluate(
         return {}
     nb = max(1, len(loader))
     metrics = {f"loss_{k}": totals[k] / nb for k in totals}
-    metrics["mae_bpm"] = (bpm_abs / n) * (BPM_HI - BPM_LO)
+    metrics["mae_bpm"] = (bpm_abs / max(1.0, counted["bpm"])) * (BPM_HI - BPM_LO)
     for name in ("energy", "mode", "key", "prog", "bpc"):
         metrics[f"acc_{name}"] = correct[name] / max(1.0, counted[name])
     return metrics
@@ -333,7 +347,6 @@ def main() -> None:
     model = StructurePriorNet(in_dim, hidden=args.hidden).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
     ce = nn.CrossEntropyLoss(label_smoothing=0.05, reduction="none")
-    mse = nn.MSELoss()
 
     best_val = float("inf")
     best_state: dict[str, Any] | None = None
@@ -345,7 +358,7 @@ def main() -> None:
         steps = 0
         for batch in train_loader:
             batch = {k: v.to(device) for k, v in batch.items()}
-            loss, _ = batch_loss(model, batch, ce=ce, mse=mse)
+            loss, _ = batch_loss(model, batch, ce=ce)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
