@@ -37,12 +37,21 @@ def train(
     pairs_path: Path,
     checkpoint_dir: Path,
     *,
+    extra_pairs: list[Path] | None = None,
     epochs: int = 60,
     batch_size: int = 256,
     lr: float = 1e-3,
     hidden: int = 64,
 ) -> None:
     records = load_jsonl(pairs_path)
+    if extra_pairs:
+        for extra_path in extra_pairs:
+            if extra_path.is_file():
+                extra = load_jsonl(extra_path)
+                print(f"extra pairs={len(extra)} from {extra_path}")
+                records = records + extra
+            else:
+                print(f"[警告] extra-pairs が見つかりません: {extra_path}")
     print(f"学習データ: {len(records)} 件")
 
     xs = torch.tensor(
@@ -92,6 +101,13 @@ def train(
 def main() -> None:
     parser = argparse.ArgumentParser(description="template prior MLP 学習")
     parser.add_argument("--pairs", type=Path, default=DEFAULT_PAIRS)
+    parser.add_argument(
+        "--extra-pairs",
+        type=Path,
+        default=None,
+        nargs="*",
+        help="EMOPIA 等の追加 template pairs JSONL（複数指定可）",
+    )
     parser.add_argument("--checkpoint-dir", type=Path, default=DEFAULT_CKPT_DIR)
     parser.add_argument("--epochs", type=int, default=60)
     parser.add_argument("--batch-size", type=int, default=256)
@@ -102,6 +118,7 @@ def main() -> None:
     train(
         args.pairs,
         args.checkpoint_dir,
+        extra_pairs=args.extra_pairs or [],
         epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,
