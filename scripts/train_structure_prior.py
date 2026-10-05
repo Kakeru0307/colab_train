@@ -21,7 +21,7 @@ from typing import Any
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, Dataset, Subset
+from torch.utils.data import DataLoader, Dataset, Subset, WeightedRandomSampler
 
 ROOT = Path(__file__).resolve().parent
 if ROOT.name == "scripts":
@@ -78,6 +78,7 @@ def load_accept_rows(path: Path) -> list[dict[str, Any]]:
             continue
         if st["key"] not in KEYS:
             continue
+        row["source"] = "accept"
         rows.append(row)
     if not rows:
         raise RuntimeError(f"学習可能な accept 行がありません: {path}")
@@ -85,6 +86,24 @@ def load_accept_rows(path: Path) -> list[dict[str, Any]]:
 
 
 MASKABLE_HEADS: tuple[str, ...] = ("bpm", "energy", "mode", "key", "prog", "bpc")
+
+
+def source_of(row: dict[str, Any]) -> str:
+    src = str(row.get("source") or "unknown").strip().lower()
+    if src in ("accept", "vgmidi", "emopia"):
+        return src
+    return "unknown"
+
+
+def make_source_weights(rows: list[dict[str, Any]], indices: list[int]) -> torch.Tensor:
+    """source ごとの件数の逆数を重みにする。期待サンプリング比率をソース間で揃える。"""
+    counts: Counter[str] = Counter(source_of(rows[i]) for i in indices)
+    weights = []
+    for i in indices:
+        src = source_of(rows[i])
+        n = max(1, counts[src])
+        weights.append(1.0 / float(n))
+    return torch.tensor(weights, dtype=torch.double)
 
 
 def load_extra_rows(path: Path) -> list[dict[str, Any]]:
@@ -330,17 +349,29 @@ def main() -> None:
 
     train_idx, val_idx = stratified_split(rows, val_ratio=args.val_ratio, seed=args.seed)
     ds = PriorPairDataset(rows)
+    train_source_counts = Counter(source_of(rows[i]) for i in train_idx)
+    print(f"split train={len(train_idx)} val={len(val_idx)}")
+    print(f"train_by_source {dict(train_source_counts)}")
+    train_weights = make_source_weights(rows, train_idx)
+    weight_sum_by_source: Counter[str] = Counter()
+    for i, w in zip(train_idx, train_weights.tolist()):
+        weight_sum_by_source[source_of(rows[i])] += float(w)
+    print(f"train_weight_sum_by_source {dict(weight_sum_by_source)}")
+    train_sampler = WeightedRandomSampler(
+        weights=train_weights,
+        num_samples=len(train_idx),
+        replacement=True,
+    )
     train_loader = DataLoader(
         Subset(ds, train_idx),
         batch_size=min(args.batch_size, max(1, len(train_idx))),
-        shuffle=True,
+        sampler=train_sampler,
     )
     val_loader = DataLoader(
         Subset(ds, val_idx),
         batch_size=min(args.batch_size, max(1, len(val_idx) or 1)),
         shuffle=False,
     )
-    print(f"split train={len(train_idx)} val={len(val_idx)}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     in_dim = FEATURE_DIM
