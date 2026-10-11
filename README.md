@@ -29,9 +29,19 @@ Stage 1 / Stage 2 は **同じ `--mode`** でパッチ化してください。�
 **Git に含めない:** `data/pairs/`（**Colab 上でのみ** `prepare_all.py` が生成）
 
 推論・DAW 確認用の `generate_*.py` / `inference.py` は本リポジトリには置かず、ローカル `prttype/` を使う。  
-**Structure Prior** は Colab ノートの `TRAIN_STRUCTURE_PRIOR` で学習（accept + VGMIDI + EMOPIA + PMEmo + DEAM）。  
-同梱データ: `data/vgmidi/labelled_midi`・`annotations/`・`vgmidi_pairs/`・`emopia_pairs/`。  
-PMEmo / DEAM は **音声を Git に入れない**。ローカルで `pmemo_to_pairs.py` / `deam_to_pairs.py` が作った `*_pairs/structure_pairs.jsonl` だけを `data/pmemo_pairs/`・`data/deam_pairs/` に置く。
+**Structure Prior** は Colab ノートの `TRAIN_STRUCTURE_PRIOR` で学習。  
+使える pairs（あれば全部 `--extra-jsonl`）:
+
+| パス | 内容 |
+|---|---|
+| `data/vgmidi_pairs/` | VGMIDI VA+BPM |
+| `data/emopia_pairs/` | EMOPIA キー/モード |
+| `data/pmemo_pairs/` | PMEmo VA+推定BPM |
+| `data/deam_pairs/` | DEAM（任意） |
+| `data/fme24_pairs/` | FME-24 VA+BPM |
+| `data/high_bpm_pairs/` | BPM≥150 抜き出し（ソース名 `high_bpm`） |
+
+音声本体は Git に入れない。JSONL だけ置く。高速帯を厚くするため `USE_HIGH_BPM=True` 推奨。
 
 ## ローカル vs Colab の役割
 
