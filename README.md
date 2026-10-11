@@ -29,8 +29,9 @@ Stage 1 / Stage 2 は **同じ `--mode`** でパッチ化してください。�
 **Git に含めない:** `data/pairs/`（**Colab 上でのみ** `prepare_all.py` が生成）
 
 推論・DAW 確認用の `generate_*.py` / `inference.py` は本リポジトリには置かず、ローカル `prttype/` を使う。  
-**Structure Prior** は Colab ノートの `TRAIN_STRUCTURE_PRIOR` で学習（VGMIDI + EMOPIA）。  
-同梱データ: `data/vgmidi/labelled_midi`（204 MIDI）・`annotations/`・`vgmidi_pairs/`・`emopia_pairs/`（変換済み JSONL。あれば再利用）。
+**Structure Prior** は Colab ノートの `TRAIN_STRUCTURE_PRIOR` で学習（accept + VGMIDI + EMOPIA + PMEmo + DEAM）。  
+同梱データ: `data/vgmidi/labelled_midi`・`annotations/`・`vgmidi_pairs/`・`emopia_pairs/`。  
+PMEmo / DEAM は **音声を Git に入れない**。ローカルで `pmemo_to_pairs.py` / `deam_to_pairs.py` が作った `*_pairs/structure_pairs.jsonl` だけを `data/pmemo_pairs/`・`data/deam_pairs/` に置く。
 
 ## ローカル vs Colab の役割
 
@@ -40,7 +41,7 @@ Stage 1 / Stage 2 は **同じ `--mode`** でパッチ化してください。�
 | **合成 MIDI 生成** | **Colab**（`prepare_all.py` が自動実行） |
 | **パッチ化（pairs）** | **Colab のみ**（ローカルで `prepare_dataset.py` は不要） |
 | Stage 1 / 2 学習 | Colab |
-| Structure Prior 学習 | **Colab**（`TRAIN_STRUCTURE_PRIOR` + VGMIDI/EMOPIA） |
+| Structure Prior 学習 | **Colab**（`TRAIN_STRUCTURE_PRIOR` + VGMIDI/EMOPIA/PMEmo/DEAM pairs） |
 | 推論・DAW 確認 | ローカル `prttype/` |
 
 ローカルで `python -m makeData.generate` して試すことはできますが、**学習用 pairs は Colab で作ってください**（容量・GPU 環境の都合）。

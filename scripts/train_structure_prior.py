@@ -90,7 +90,7 @@ MASKABLE_HEADS: tuple[str, ...] = ("bpm", "energy", "mode", "key", "prog", "bpc"
 
 def source_of(row: dict[str, Any]) -> str:
     src = str(row.get("source") or "unknown").strip().lower()
-    if src in ("accept", "vgmidi", "emopia"):
+    if src in ("accept", "vgmidi", "emopia", "pmemo", "deam"):
         return src
     return "unknown"
 

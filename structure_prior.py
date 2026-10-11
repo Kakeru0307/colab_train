@@ -3,7 +3,7 @@
 Trained on gated prior_pairs accept rows + EMOPIA pairs.
 Inference for the final pipeline (文 → VA encoder → V/A → prior → backing/lead).
 
-v2: 入力を VA 2次元に簡略化（WRIME 8スコアは感情エンコーダ層で VA に変換済み）。
+v2: 入力は VA 2次元（感情エンコーダがテキストから直接回帰）。
 """
 
 from __future__ import annotations
@@ -225,7 +225,7 @@ def load_prior(
     if in_dim != FEATURE_DIM:
         raise RuntimeError(
             f"structure prior checkpoint の in_dim={in_dim} は非互換です "
-            f"（期待値={FEATURE_DIM}: WRIME8+VA2）。"
+            f"（期待値={FEATURE_DIM}: VA2）。"
             " train_structure_prior.py で再学習してください。"
         )
     hidden = int(meta.get("hidden", 64))
