@@ -39,9 +39,10 @@ Stage 1 / Stage 2 は **同じ `--mode`** でパッチ化してください。�
 | `data/pmemo_pairs/` | PMEmo VA+推定BPM |
 | `data/deam_pairs/` | DEAM（任意） |
 | `data/fme24_pairs/` | FME-24 VA+BPM |
-| `data/high_bpm_pairs/` | BPM≥150 抜き出し（ソース名 `high_bpm`） |
+| `data/high_bpm_pairs/` | BPM≥150 抜き出し（参考用。分布学習では使わない） |
 
-音声本体は Git に入れない。JSONL だけ置く。高速帯を厚くするため `USE_HIGH_BPM=True` 推奨。
+音声本体は Git に入れない。JSONL だけ置く。  
+BPM はビン分布サンプリング。`USE_HIGH_BPM` は条件つき分布を歪めるため **False**（train 側でもスキップ）。
 
 ## ローカル vs Colab の役割
 
