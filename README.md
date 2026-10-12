@@ -40,9 +40,10 @@ Stage 1 / Stage 2 は **同じ `--mode`** でパッチ化してください。�
 | `data/deam_pairs/` | DEAM（任意） |
 | `data/fme24_pairs/` | FME-24 VA+BPM |
 | `data/high_bpm_pairs/` | BPM≥150 抜き出し（参考用。分布学習では使わない） |
+| `data/va_bpm_curated/` | VA×BPM 整合（`organize_va_bpm_pairs.py`）。boost high/low を prior extras に追加 |
 
 音声本体は Git に入れない。JSONL だけ置く。  
-BPM はビン分布サンプリング。`USE_HIGH_BPM` は条件つき分布を歪めるため **False**（train 側でもスキップ）。
+BPM はビン分布サンプリング。`USE_HIGH_BPM` は **False**。prior 学習前に整理スクリプトを実行（ノートブック内）。
 
 ## ローカル vs Colab の役割
 
