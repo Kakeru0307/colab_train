@@ -149,7 +149,6 @@
 {"source": "vgmidi", "clip": "Final Fantasy_PS1_Final Fantasy VII_Electric de Chocobo", "va": {"valence": 0.18590530697190424, "arousal": 0.4216545265348596}, "va_source": "vgmidi_json_mean", "structure": {"bpm": 160.0, "bars": 8}}
 {"source": "vgmidi", "clip": "Final Fantasy_PS1_Final Fantasy VII_Battle Theme", "va": {"valence": 0.09025089605734768, "arousal": 0.40767025089605735}, "va_source": "vgmidi_json_mean", "structure": {"bpm": 90.0, "bars": 8, "key": "Ab", "mode": "major"}}
 {"source": "vgmidi", "clip": "Other_N64_GoldenEye 007_Facility X", "va": {"valence": -0.11646505376344087, "arousal": 0.3600940860215054}, "va_source": "vgmidi_json_mean", "structure": {"bpm": 140.0, "bars": 8, "key": "Eb", "mode": "major"}}
-{"source": "vgmidi", "clip": "The Legend of Zelda_N64_The Legend of Zelda Ocarina of Time_Ganondorf", "va": {"valence": -0.09121568627450981, "arousal": -0.04849019607843137}, "va_source": "vgmidi_json_mean", "structure": {"bpm": 200.0, "bars": 8}}
 {"source": "vgmidi", "clip": "The Legend of Zelda_N64_The Legend of Zelda Majora's Mask_The Mayors Office", "va": {"valence": 0.0334, "arousal": 0.10664166666666666}, "va_source": "vgmidi_json_mean", "structure": {"bpm": 120.0, "bars": 8, "key": "Eb", "mode": "major"}}
 {"source": "vgmidi", "clip": "Other_N64_GoldenEye 007_Runway X", "va": {"valence": -0.11564516129032257, "arousal": 0.04048387096774195}, "va_source": "vgmidi_json_mean", "structure": {"bpm": 130.0, "bars": 8, "key": "G", "mode": "major"}}
 {"source": "vgmidi", "clip": "Banjo-Kazooie_N64_Banjo-Kazooie_Boggys Igloo Happy", "va": {"valence": 0.45511764705882357, "arousal": 0.17188235294117646}, "va_source": "vgmidi_json_mean", "structure": {"bpm": 142.0, "bars": 8, "key": "D", "mode": "major"}}
@@ -368,7 +367,6 @@
 {"source": "pmemo", "clip": "43.mp3", "va": {"valence": 0.575, "arousal": 0.7250000000000001}, "va_source": "pmemo_static", "structure": {"bpm": 123.0, "bars": 8}}
 {"source": "pmemo", "clip": "44.mp3", "va": {"valence": 0.3500000000000001, "arousal": 0.375}, "va_source": "pmemo_static", "structure": {"bpm": 136.0, "bars": 8}}
 {"source": "pmemo", "clip": "46.mp3", "va": {"valence": 0.1499999999999999, "arousal": 0.675}, "va_source": "pmemo_static", "structure": {"bpm": 143.6, "bars": 8}}
-{"source": "pmemo", "clip": "47.mp3", "va": {"valence": -0.07499999999999996, "arousal": -0.19999999999999996}, "va_source": "pmemo_static", "structure": {"bpm": 161.5, "bars": 8}}
 {"source": "pmemo", "clip": "48.mp3", "va": {"valence": 0.675, "arousal": 0.44999999999999996}, "va_source": "pmemo_static", "structure": {"bpm": 123.0, "bars": 8}}
 {"source": "pmemo", "clip": "49.mp3", "va": {"valence": 0.42500000000000004, "arousal": 0.575}, "va_source": "pmemo_static", "structure": {"bpm": 117.5, "bars": 8}}
 {"source": "pmemo", "clip": "50.mp3", "va": {"valence": 0.17500000000000004, "arousal": 0.675}, "va_source": "pmemo_static", "structure": {"bpm": 136.0, "bars": 8}}
@@ -776,7 +774,6 @@
 {"source": "pmemo", "clip": "587.mp3", "va": {"valence": 0.19999999999999996, "arousal": -0.22499999999999998}, "va_source": "pmemo_static", "structure": {"bpm": 172.3, "bars": 8}}
 {"source": "pmemo", "clip": "588.mp3", "va": {"valence": 0.55, "arousal": 0.3999999999999999}, "va_source": "pmemo_static", "structure": {"bpm": 107.7, "bars": 8}}
 {"source": "pmemo", "clip": "589.mp3", "va": {"valence": -0.025000000000000022, "arousal": 0.10000000000000009}, "va_source": "pmemo_static", "structure": {"bpm": 136.0, "bars": 8}}
-{"source": "pmemo", "clip": "590.mp3", "va": {"valence": -0.275, "arousal": -0.07499999999999996}, "va_source": "pmemo_static", "structure": {"bpm": 152.0, "bars": 8}}
 {"source": "pmemo", "clip": "592.mp3", "va": {"valence": -0.17500000000000004, "arousal": -0.17500000000000004}, "va_source": "pmemo_static", "structure": {"bpm": 86.1, "bars": 8}}
 {"source": "pmemo", "clip": "594.mp3", "va": {"valence": -0.125, "arousal": 0.02499999999999991}, "va_source": "pmemo_static", "structure": {"bpm": 129.2, "bars": 8}}
 {"source": "pmemo", "clip": "595.mp3", "va": {"valence": -0.19999999999999996, "arousal": -0.22499999999999998}, "va_source": "pmemo_static", "structure": {"bpm": 129.2, "bars": 8}}
@@ -859,7 +856,6 @@
 {"source": "pmemo", "clip": "694.mp3", "va": {"valence": -0.32499999999999996, "arousal": -0.22499999999999998}, "va_source": "pmemo_static", "structure": {"bpm": 136.0, "bars": 8}}
 {"source": "pmemo", "clip": "697.mp3", "va": {"valence": -0.025000000000000022, "arousal": 0.3999999999999999}, "va_source": "pmemo_static", "structure": {"bpm": 136.0, "bars": 8}}
 {"source": "pmemo", "clip": "698.mp3", "va": {"valence": -0.475, "arousal": -0.275}, "va_source": "pmemo_static", "structure": {"bpm": 123.0, "bars": 8}}
-{"source": "pmemo", "clip": "700.mp3", "va": {"valence": -0.050000000000000044, "arousal": -0.30000000000000004}, "va_source": "pmemo_static", "structure": {"bpm": 152.0, "bars": 8}}
 {"source": "pmemo", "clip": "703.mp3", "va": {"valence": 0.0909090909100001, "arousal": 0.0909090909100001}, "va_source": "pmemo_static", "structure": {"bpm": 136.0, "bars": 8}}
 {"source": "pmemo", "clip": "704.mp3", "va": {"valence": 0.3999999999999999, "arousal": 0.25}, "va_source": "pmemo_static", "structure": {"bpm": 136.0, "bars": 8}}
 {"source": "pmemo", "clip": "706.mp3", "va": {"valence": 0.2250000000000001, "arousal": -0.19999999999999996}, "va_source": "pmemo_static", "structure": {"bpm": 136.0, "bars": 8}}
@@ -1131,6 +1127,7 @@
 {"source": "fme24", "clip": "bunsenburnerexmachinaanthonywilliamtomblingcutssample1mp3.mp3", "va": {"valence": -0.18093750000000003, "arousal": 0.05119011878967286}, "va_source": "fme24_participant_mean", "structure": {"bpm": 125.8, "bars": 8}}
 {"source": "fme24", "clip": "c90soundtreeundertheskinsample1mp3.mp3", "va": {"valence": -0.018351593017578098, "arousal": 0.10822654724121085}, "va_source": "fme24_participant_mean", "structure": {"bpm": 123.5, "bars": 8}}
 {"source": "fme24", "clip": "c90soundtreeundertheskinsample2mp3.mp3", "va": {"valence": -0.72921875, "arousal": 0.80625}, "va_source": "fme24_participant_mean", "structure": {"bpm": 121.6, "bars": 8}}
+{"source": "fme24", "clip": "callingthewhipperinjonnygreenwoodspencersample1mp3.mp3", "va": {"valence": -0.690187683105469, "arousal": 0.256750030517578}, "va_source": "fme24_participant_mean", "structure": {"bpm": 164.1, "bars": 8}}
 {"source": "fme24", "clip": "callingthewhipperinjonnygreenwoodspencersample2mp3.mp3", "va": {"valence": -0.42102432250976574, "arousal": 0.40703472985161676}, "va_source": "fme24_participant_mean", "structure": {"bpm": 114.8, "bars": 8}}
 {"source": "fme24", "clip": "cantoatgabelmeisterspeakthegrandbudapesthotelalexandredesplatsample2mp3.mp3", "va": {"valence": -0.18338068181818182, "arousal": 0.5625142045454546}, "va_source": "fme24_participant_mean", "structure": {"bpm": 120.2, "bars": 8}}
 {"source": "fme24", "clip": "capharnaumkhaledmouzanarfromcapharnaumoriginalmotionpicturesoundtracksample2mp3.mp3", "va": {"valence": -0.18830729166666668, "arousal": -0.1810989634195964}, "va_source": "fme24_participant_mean", "structure": {"bpm": 105.5, "bars": 8}}
@@ -1141,7 +1138,6 @@
 {"source": "fme24", "clip": "christinthemountainsmychaeldannalifeofpisample1mp3.mp3", "va": {"valence": 0.26544921875, "arousal": -0.147265625}, "va_source": "fme24_participant_mean", "structure": {"bpm": 130.1, "bars": 8}}
 {"source": "fme24", "clip": "christinthemountainsmychaeldannalifeofpisample2mp3.mp3", "va": {"valence": 0.7025, "arousal": 0.3423177083333333}, "va_source": "fme24_participant_mean", "structure": {"bpm": 132.5, "bars": 8}}
 {"source": "fme24", "clip": "ciaopapagregorymannalexandredesplatguillermodeltorospinnochiosample1mp3.mp3", "va": {"valence": 0.12791666666666668, "arousal": 0.18558339436848934}, "va_source": "fme24_participant_mean", "structure": {"bpm": 155.1, "bars": 8}}
-{"source": "fme24", "clip": "ciaopapagregorymannalexandredesplatguillermodeltorospinnochiosample2mp3.mp3", "va": {"valence": -0.01625, "arousal": -0.0091249847412109}, "va_source": "fme24_participant_mean", "structure": {"bpm": 162.8, "bars": 8}}
 {"source": "fme24", "clip": "closervalentinhadjadjclosesample1mp3.mp3", "va": {"valence": 0.004891459147135328, "arousal": 0.47025608062744134}, "va_source": "fme24_participant_mean", "structure": {"bpm": 117.5, "bars": 8}}
 {"source": "fme24", "clip": "closervalentinhadjadjclosesample2mp3.mp3", "va": {"valence": 0.517265625, "arousal": 0.475}, "va_source": "fme24_participant_mean", "structure": {"bpm": 146.3, "bars": 8}}
 {"source": "fme24", "clip": "conciliationiiparasitejungjaeilsample1mp3.mp3", "va": {"valence": -0.08002289586244421, "arousal": 0.10085493828800035}, "va_source": "fme24_participant_mean", "structure": {"bpm": 156.6, "bars": 8}}
@@ -1157,7 +1153,6 @@
 {"source": "fme24", "clip": "decisiontoleaveevidencechoyoungwuksample1mp3.mp3", "va": {"valence": -0.180187683105469, "arousal": -0.145250015258789}, "va_source": "fme24_participant_mean", "structure": {"bpm": 144.9, "bars": 8}}
 {"source": "fme24", "clip": "decisiontoleaveevidencechoyoungwuksample2mp3.mp3", "va": {"valence": -0.41500000000000004, "arousal": 0.5172265625}, "va_source": "fme24_participant_mean", "structure": {"bpm": 94.0, "bars": 8}}
 {"source": "fme24", "clip": "decisiontoleavemistjunghoonheesample2mp3.mp3", "va": {"valence": 0.237312316894531, "arousal": 0.444749984741211}, "va_source": "fme24_participant_mean", "structure": {"bpm": 188.0, "bars": 8}}
-{"source": "fme24", "clip": "detachhanszimmerinterstellarsample1mp3.mp3", "va": {"valence": -0.3323798043387276, "arousal": -0.04717561449323387}, "va_source": "fme24_participant_mean", "structure": {"bpm": 178.2, "bars": 8}}
 {"source": "fme24", "clip": "detachhanszimmerinterstellarsample2mp3.mp3", "va": {"valence": -0.6900625610351563, "arousal": 0.42808333079020205}, "va_source": "fme24_participant_mean", "structure": {"bpm": 149.1, "bars": 8}}
 {"source": "fme24", "clip": "dickonhinchliffeledathelostdaughtersample1mp3.mp3", "va": {"valence": 0.1769140625, "arousal": 0.17994140625}, "va_source": "fme24_participant_mean", "structure": {"bpm": 166.7, "bars": 8}}
 {"source": "fme24", "clip": "dickonhinchliffeoctopusthelostdaughtersample1mp3.mp3", "va": {"valence": 0.4406206512451172, "arousal": 0.13770401000976565}, "va_source": "fme24_participant_mean", "structure": {"bpm": 172.3, "bars": 8}}
@@ -1456,6 +1451,7 @@
 {"source": "fme24", "clip": "upisdownhanszimmerpiratesofthecaribbeanatworldsendsample1mp3.mp3", "va": {"valence": 0.042624994913736974, "arousal": 0.13544661204020184}, "va_source": "fme24_participant_mean", "structure": {"bpm": 130.9, "bars": 8}}
 {"source": "fme24", "clip": "upisdownhanszimmerpiratesofthecaribbeanatworldsendsample2mp3.mp3", "va": {"valence": 0.0828367445203992, "arousal": 0.3615833409627279}, "va_source": "fme24_participant_mean", "structure": {"bpm": 126.0, "bars": 8}}
 {"source": "fme24", "clip": "vanmorrisonandthehealinghasbegunbelfastsample2mp3.mp3", "va": {"valence": 0.26544921875, "arousal": 0.4444857025146485}, "va_source": "fme24_participant_mean", "structure": {"bpm": 122.3, "bars": 8}}
+{"source": "fme24", "clip": "vanmorrisonwarmlovebelfastsample1mp3.mp3", "va": {"valence": 0.00453125, "arousal": -0.753515625}, "va_source": "fme24_participant_mean", "structure": {"bpm": 156.6, "bars": 8}}
 {"source": "fme24", "clip": "vanmorrisonwarmlovebelfastsample2mp3.mp3", "va": {"valence": 0.3674061584472655, "arousal": 0.1060000228881835}, "va_source": "fme24_participant_mean", "structure": {"bpm": 172.5, "bars": 8}}
 {"source": "fme24", "clip": "vehicularjeffslaughterleobirenbergbottomssample1mp3.mp3", "va": {"valence": -0.35404296875, "arousal": 0.410904960632324}, "va_source": "fme24_participant_mean", "structure": {"bpm": 120.9, "bars": 8}}
 {"source": "fme24", "clip": "vehicularjeffslaughterleobirenbergbottomssample2mp3.mp3", "va": {"valence": -0.001197967529296927, "arousal": 0.44239583969116203}, "va_source": "fme24_participant_mean", "structure": {"bpm": 126.9, "bars": 8}}
