@@ -29,21 +29,15 @@ Stage 1 / Stage 2 は **同じ `--mode`** でパッチ化してください。�
 **Git に含めない:** `data/pairs/`（**Colab 上でのみ** `prepare_all.py` が生成）
 
 推論・DAW 確認用の `generate_*.py` / `inference.py` は本リポジトリには置かず、ローカル `prttype/` を使う。  
-**Structure Prior** は Colab ノートの `TRAIN_STRUCTURE_PRIOR` で学習。  
-使える pairs（あれば全部 `--extra-jsonl`）:
+**Structure Prior** は Colab ノートの `TRAIN_STRUCTURE_PRIOR` で学習。本線 extras は次のみ:
 
 | パス | 内容 |
 |---|---|
-| `data/vgmidi_pairs/` | VGMIDI VA+BPM |
-| `data/emopia_pairs/` | EMOPIA キー/モード |
-| `data/pmemo_pairs/` | PMEmo VA+推定BPM |
-| `data/deam_pairs/` | DEAM（任意） |
-| `data/fme24_pairs/` | FME-24 VA+BPM |
-| `data/high_bpm_pairs/` | BPM≥150 抜き出し（参考用。分布学習では使わない） |
-| `data/va_bpm_curated/` | VA×BPM 整合（`organize_va_bpm_pairs.py`）。boost high/low を prior extras に追加 |
+| `data/va_bpm_curated/structure_pairs_balanced_116.jsonl` | VA帯ごと 116 件×4（本線） |
+| `data/emopia_pairs/` | キー/モード（任意・`USE_EMOPIA`） |
 
-音声本体は Git に入れない。JSONL だけ置く。  
-BPM はビン分布サンプリング。`USE_HIGH_BPM` は **False**。prior 学習前に整理スクリプトを実行（ノートブック内）。
+accept は `--jsonl`。VGMIDI/PMEmo/FME 全量や `high_bpm` は extras に載せない（4×116 の揃えを崩す）。  
+BPM はビン分布サンプリング。整理はノート内で `organize_va_bpm_pairs.py`。
 
 ## ローカル vs Colab の役割
 
@@ -53,7 +47,7 @@ BPM はビン分布サンプリング。`USE_HIGH_BPM` は **False**。prior 学
 | **合成 MIDI 生成** | **Colab**（`prepare_all.py` が自動実行） |
 | **パッチ化（pairs）** | **Colab のみ**（ローカルで `prepare_dataset.py` は不要） |
 | Stage 1 / 2 学習 | Colab |
-| Structure Prior 学習 | **Colab**（`TRAIN_STRUCTURE_PRIOR` + VGMIDI/EMOPIA/PMEmo/DEAM pairs） |
+| Structure Prior 学習 | **Colab**（`TRAIN_STRUCTURE_PRIOR` + balanced_116 + 任意 EMOPIA） |
 | 推論・DAW 確認 | ローカル `prttype/` |
 
 ローカルで `python -m makeData.generate` して試すことはできますが、**学習用 pairs は Colab で作ってください**（容量・GPU 環境の都合）。
