@@ -36,6 +36,13 @@ Stage 1 / Stage 2 は **同じ `--mode`** でパッチ化してください。�
 | `data/va_bpm_curated/structure_pairs_balanced_116.jsonl` | VA帯ごと 116 件×4（本線） |
 | `data/emopia_pairs/` | キー/モード（任意・`USE_EMOPIA`） |
 
+**ギター奏法付与（TechApply）** は `GEN_GUITAR_TECH_APPLY` / `TRAIN_GUITAR_TECH_APPLY`。コードは `guitar_tech/`（`prttype/guitar_tech` と同期）。Colab 上でキャリア×乱択教師を再生成して学習し、`checkpoints/guitar_tech/guitar_tech_apply_last.pt` を push。ローカルは:
+
+```powershell
+Copy-Item colab_train\checkpoints\guitar_tech\guitar_tech_apply_last.pt `
+  prttype\checkpoints\guitar_tech\guitar_tech_apply_last.pt -Force
+```
+
 accept は `--jsonl`。VGMIDI/PMEmo/FME 全量や `high_bpm` は extras に載せない（4×116 の揃えを崩す）。  
 BPM はビン分布サンプリング。整理はノート内で `organize_va_bpm_pairs.py`。
 
@@ -48,6 +55,7 @@ BPM はビン分布サンプリング。整理はノート内で `organize_va_bp
 | **パッチ化（pairs）** | **Colab のみ**（ローカルで `prepare_dataset.py` は不要） |
 | Stage 1 / 2 学習 | Colab |
 | Structure Prior 学習 | **Colab**（`TRAIN_STRUCTURE_PRIOR` + balanced_116 + 任意 EMOPIA） |
+| ギター奏法付与（TechApply） | **Colab**（`GEN_GUITAR_TECH_APPLY` + `TRAIN_GUITAR_TECH_APPLY`） |
 | 推論・DAW 確認 | ローカル `prttype/` |
 
 ローカルで `python -m makeData.generate` して試すことはできますが、**学習用 pairs は Colab で作ってください**（容量・GPU 環境の都合）。

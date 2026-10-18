@@ -1,5 +1,6 @@
 # 生成物（Colab 上で再作成）
 data/pairs/
+data/ギター_dataset/
 
 # Python
 __pycache__/
