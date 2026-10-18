@@ -38,9 +38,14 @@ def _reset_pb(inst: pm.Instrument, t: float) -> None:
 
 
 def copy_timing(src: pm.PrettyMIDI, dst: pm.PrettyMIDI) -> None:
-    """Copy tempo map / time signatures so DAW beat grid matches the source."""
+    """Copy tempo map / time signatures so DAW beat grid matches the source.
+
+    Must also copy ``resolution``; otherwise write() rebuilds set_tempo from
+    mismatched tick_scale×resolution and can overflow.
+    """
+    dst.resolution = int(src.resolution)
     if hasattr(src, "_tick_scales") and src._tick_scales:
-        dst._tick_scales = list(src._tick_scales)
+        dst._tick_scales = [(int(tick), float(scale)) for tick, scale in src._tick_scales]
     dst.time_signature_changes = list(src.time_signature_changes)
 
 
