@@ -36,7 +36,7 @@ Stage 1 / Stage 2 は **同じ `--mode`** でパッチ化してください。�
 | `data/va_bpm_curated/structure_pairs_balanced_116.jsonl` | VA帯ごと 116 件×4（本線） |
 | `data/emopia_pairs/` | キー/モード（任意・`USE_EMOPIA`） |
 
-**ギター奏法付与（TechApply）** は `GEN_GUITAR_TECH_APPLY` / `TRAIN_GUITAR_TECH_APPLY`。コードは `guitar_tech/`（`prttype/guitar_tech` と同期）。Colab 上でキャリア×乱択教師を再生成して学習し、`checkpoints/guitar_tech/guitar_tech_apply_last.pt` を push。ローカルは:
+**ギター奏法付与（TechApply）** は `GEN_GUITAR_TECH_APPLY` / `TRAIN_GUITAR_TECH_APPLY`（既定 False。学習時だけ True）。コードは `guitar_tech/`（`prttype/guitar_tech` と同期）。Colab 上でキャリア×乱択教師を再生成して学習し、`checkpoints/guitar_tech/guitar_tech_apply_last.pt` を push。ローカルは:
 
 ```powershell
 Copy-Item colab_train\checkpoints\guitar_tech\guitar_tech_apply_last.pt `

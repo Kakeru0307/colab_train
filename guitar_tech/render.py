@@ -9,8 +9,9 @@ from typing import Any
 
 import pretty_midi as pm
 
-from .carriers import NoteEvent, notes_to_midi
-from .constants import PB_MAX
+from .carriers import NoteEvent
+from .constants import PB_MAX, PB_TECHS
+from .features import note_has_overlap
 from .params import TECH_WEIGHTS, sample_params
 
 # semitone → pitch bend (assuming ±2 semitone PB range → ±8192)
@@ -32,6 +33,17 @@ def _pb_semitone(semi: float) -> int:
     return _clamp_pb(semi * _PB_PER_SEMITONE)
 
 
+def _reset_pb(inst: pm.Instrument, t: float) -> None:
+    inst.pitch_bends.append(pm.PitchBend(pitch=0, time=float(t)))
+
+
+def copy_timing(src: pm.PrettyMIDI, dst: pm.PrettyMIDI) -> None:
+    """Copy tempo map / time signatures so DAW beat grid matches the source."""
+    if hasattr(src, "_tick_scales") and src._tick_scales:
+        dst._tick_scales = list(src._tick_scales)
+    dst.time_signature_changes = list(src.time_signature_changes)
+
+
 def assign_techs(notes: list[NoteEvent], rng: random.Random) -> list[NoteLabel]:
     labels: list[NoteLabel] = []
     names = list(TECH_WEIGHTS.keys())
@@ -47,11 +59,20 @@ def assign_techs(notes: list[NoteEvent], rng: random.Random) -> list[NoteLabel]:
             tech = "staccato" if n.duration < 0.15 else "none"
         if tech == "tremolo" and n.duration < 0.25:
             tech = "staccato"
-        if tech in ("slide", "hammer", "pull") and i + 1 >= len(notes):
+        # slide notes-mode needs a following note; hammer/pull are self-contained
+        if tech == "slide" and i + 1 >= len(notes):
             tech = "none"
         if tech == "palm_mute" and n.pitch > 64 and rng.random() < 0.5:
             tech = "none"
         params = sample_params(tech, rng) if tech != "none" else {}
+        # slide notes mode without next → fall back to pb
+        if tech == "slide" and params.get("mode") == "notes" and i + 1 >= len(notes):
+            params["mode"] = "pb"
+        uses_pb = tech in PB_TECHS and not (
+            tech == "slide" and params.get("mode") == "notes"
+        )
+        if uses_pb and note_has_overlap(notes, i):
+            tech, params = "none", {}
         labels.append(NoteLabel(i, tech, params))
     return labels
 
@@ -62,15 +83,24 @@ def render_target(
     *,
     program: int = 29,
     rng: random.Random | None = None,
+    source: pm.PrettyMIDI | None = None,
 ) -> pm.PrettyMIDI:
     rng = rng or random.Random(0)
     midi = pm.PrettyMIDI()
+    if source is not None:
+        copy_timing(source, midi)
     inst = pm.Instrument(program=program, name="target")
     label_by_i = {lb.note_index: lb for lb in labels}
 
     for i, n in enumerate(notes):
         lb = label_by_i.get(i) or NoteLabel(i, "none", {})
         tech, p = lb.tech, lb.params
+        # PB is channel-global; never bend under overlapping notes
+        uses_pb = tech in PB_TECHS and not (
+            tech == "slide" and p.get("mode") == "notes"
+        )
+        if uses_pb and note_has_overlap(notes, i):
+            tech, p = "none", {}
 
         if tech == "tremolo":
             _render_tremolo(inst, n, p, rng)
@@ -106,7 +136,7 @@ def render_target(
                 pm.Note(velocity=vel, pitch=n.pitch, start=n.start, end=max(n.start + 0.02, end))
             )
             continue
-        if tech == "hammer" and i + 1 < len(notes):
+        if tech == "hammer":
             grace_end = n.start + p["grace_ms"] / 1000.0
             grace_pitch = int(max(0, min(127, n.pitch - int(p["interval"]))))
             inst.notes.append(
@@ -199,9 +229,12 @@ def render_target(
             _add_bend_release_pb(inst, n, p)
         elif tech == "arming":
             _add_arming_pb(inst, n, p)
-        elif tech == "slide" and p.get("mode") == "pb":
+        elif tech == "slide":
+            # notes-mode without next (or mode=pb): pitch-bend slide
             _add_slide_pb(inst, n, p, notes[i + 1] if i + 1 < len(notes) else None)
 
+    # Stable PB order for players that assume time-sorted events
+    inst.pitch_bends.sort(key=lambda b: (b.time, b.pitch))
     midi.instruments.append(inst)
     return midi
 
@@ -212,9 +245,10 @@ def _add_vibrato_pb(inst: pm.Instrument, n: NoteEvent, p: dict[str, Any]) -> Non
     depth = float(p["depth"]) * _PB_PER_SEMITONE  # depth as fraction of 2st
     rate = float(p["rate_hz"])
     phase = float(p["phase"])
+    _reset_pb(inst, n.start)
     t = n.start
     dt = 1.0 / 60.0
-    while t <= n.end + 1e-6:
+    while t < n.end - 1e-6:
         local = t - n.start - delay
         if local < 0:
             val = 0.0
@@ -225,6 +259,7 @@ def _add_vibrato_pb(inst: pm.Instrument, n: NoteEvent, p: dict[str, Any]) -> Non
             val = depth * env * math.sin(2 * math.pi * rate * local + phase)
         inst.pitch_bends.append(pm.PitchBend(pitch=_clamp_pb(val), time=t))
         t += dt
+    _reset_pb(inst, n.end)
 
 
 def _add_bend_up_pb(inst: pm.Instrument, n: NoteEvent, p: dict[str, Any]) -> None:
@@ -234,14 +269,16 @@ def _add_bend_up_pb(inst: pm.Instrument, n: NoteEvent, p: dict[str, Any]) -> Non
     overshoot = float(p.get("overshoot", 0.0))
     peak = target + overshoot
     t_rise_end = n.start + min(rise, n.duration * 0.5)
-    t_hold_end = n.start + n.duration * (0.3 + 0.7 * hold_frac)
+    t_hold_end = min(n.end, n.start + n.duration * (0.3 + 0.7 * hold_frac))
+    _reset_pb(inst, n.start)
     steps = 12
     for s in range(steps + 1):
         t = n.start + (t_rise_end - n.start) * s / steps
         semi = peak * s / steps
         inst.pitch_bends.append(pm.PitchBend(pitch=_pb_semitone(semi), time=t))
     inst.pitch_bends.append(pm.PitchBend(pitch=_pb_semitone(target), time=t_hold_end))
-    inst.pitch_bends.append(pm.PitchBend(pitch=_pb_semitone(target), time=n.end))
+    # release so the next note does not inherit residual bend
+    _reset_pb(inst, n.end)
 
 
 def _add_prebend_pb(inst: pm.Instrument, n: NoteEvent, p: dict[str, Any]) -> None:
@@ -254,8 +291,7 @@ def _add_prebend_pb(inst: pm.Instrument, n: NoteEvent, p: dict[str, Any]) -> Non
     if rel > 1e-6:
         t_rel = min(n.end, t_hold + rel)
         inst.pitch_bends.append(pm.PitchBend(pitch=0, time=t_rel))
-    else:
-        inst.pitch_bends.append(pm.PitchBend(pitch=_pb_semitone(semi), time=n.end))
+    _reset_pb(inst, n.end)
 
 
 def _add_bend_release_pb(inst: pm.Instrument, n: NoteEvent, p: dict[str, Any]) -> None:
@@ -264,9 +300,10 @@ def _add_bend_release_pb(inst: pm.Instrument, n: NoteEvent, p: dict[str, Any]) -
     release = float(p["release_ms"]) / 1000.0
     t1 = min(n.end, n.start + rise)
     t2 = min(n.end, t1 + release)
-    inst.pitch_bends.append(pm.PitchBend(pitch=0, time=n.start))
+    _reset_pb(inst, n.start)
     inst.pitch_bends.append(pm.PitchBend(pitch=_pb_semitone(peak), time=t1))
     inst.pitch_bends.append(pm.PitchBend(pitch=0, time=t2))
+    _reset_pb(inst, n.end)
 
 
 def _add_arming_pb(inst: pm.Instrument, n: NoteEvent, p: dict[str, Any]) -> None:
@@ -276,6 +313,7 @@ def _add_arming_pb(inst: pm.Instrument, n: NoteEvent, p: dict[str, Any]) -> None
     n_dips = int(p["n_dips"])
     t = n.start
     sign = -1.0
+    _reset_pb(inst, n.start)
     for _ in range(n_dips):
         if t >= n.end:
             break
@@ -287,6 +325,7 @@ def _add_arming_pb(inst: pm.Instrument, n: NoteEvent, p: dict[str, Any]) -> None
         t = t_ret
         if p.get("direction") == "dip":
             sign = -sign
+    _reset_pb(inst, n.end)
 
 
 def _add_slide_pb(
@@ -307,6 +346,7 @@ def _add_slide_pb(
     t1 = min(n.end, n.start + slide)
     inst.pitch_bends.append(pm.PitchBend(pitch=_pb_semitone(-semi), time=n.start))
     inst.pitch_bends.append(pm.PitchBend(pitch=0, time=t1))
+    _reset_pb(inst, n.end)
 
 
 def _render_tremolo(

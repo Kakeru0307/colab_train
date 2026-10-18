@@ -5,7 +5,7 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from .features import FEATURE_DIM
+from .features import NOTE_FEATURE_DIM
 from .params import TECH_NAMES
 
 
@@ -14,7 +14,7 @@ class TechApplyNet(nn.Module):
         self,
         n_tech: int = len(TECH_NAMES),
         *,
-        in_dim: int = FEATURE_DIM,
+        in_dim: int = NOTE_FEATURE_DIM,
         hidden: int = 128,
     ) -> None:
         super().__init__()

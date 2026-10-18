@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import secrets
 from pathlib import Path
 
 import pretty_midi as pm
@@ -12,8 +13,14 @@ import torch
 
 from .apply_model import TechApplyNet
 from .carriers import NoteEvent
-from .constants import CHECKPOINT_DIR, DEFAULT_PROGRAM, OUTPUT_DIR
-from .features import note_features, pretty_midi_to_notes
+from .constants import CHECKPOINT_DIR, DEFAULT_PROGRAM, OUTPUT_DIR, PB_TECHS
+from .features import (
+    NOTE_FEATURE_DIM,
+    note_features,
+    note_has_overlap,
+    pretty_midi_to_notes,
+    top_voice_indices,
+)
 from .params import TECH_NAMES, sample_params
 from .render import NoteLabel, render_target
 
@@ -23,13 +30,42 @@ def load_apply_model(
     device: torch.device,
 ) -> tuple[TechApplyNet, list[str]]:
     blob = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    if "model_state_dict" not in blob:
+        raise ValueError(
+            f"{ckpt_path} は奏法付与 ckpt ではありません"
+            "（model_state_dict なし。guitar_tech_apply_last.pt を指定してください）"
+        )
     meta = blob.get("meta") or {}
     names = list(meta.get("tech_names") or TECH_NAMES)
-    model = TechApplyNet(len(names), hidden=int(meta.get("hidden", 128)))
-    model.load_state_dict(blob["model_state_dict"])
+    if "none" not in names:
+        raise ValueError(f"{ckpt_path}: meta.tech_names に none がありません")
+    feat_dim = int(meta.get("feature_dim", NOTE_FEATURE_DIM))
+    if feat_dim != NOTE_FEATURE_DIM:
+        raise ValueError(
+            f"{ckpt_path}: feature_dim={feat_dim} と NOTE_FEATURE_DIM={NOTE_FEATURE_DIM} が不一致"
+        )
+    model = TechApplyNet(
+        len(names),
+        in_dim=feat_dim,
+        hidden=int(meta.get("hidden", 128)),
+    )
+    try:
+        model.load_state_dict(blob["model_state_dict"])
+    except RuntimeError as exc:
+        raise ValueError(
+            f"{ckpt_path} の state_dict が TechApplyNet と合いません"
+            "（frame AE の guitar_tech_last.pt では使えません）"
+        ) from exc
     model.to(device)
     model.eval()
     return model, names
+
+
+def _none_index(tech_names: list[str]) -> int:
+    try:
+        return tech_names.index("none")
+    except ValueError:
+        return 0
 
 
 @torch.inference_mode()
@@ -48,11 +84,14 @@ def predict_labels(
     logits = model(feats)
     if none_bias:
         logits = logits.clone()
-        logits[:, 0] = logits[:, 0] + float(none_bias)
+        ni = _none_index(tech_names)
+        logits[:, ni] = logits[:, ni] + float(none_bias)
     pred = logits.argmax(dim=-1).cpu().tolist()
     labels: list[NoteLabel] = []
     for i, tid in enumerate(pred):
         tech = tech_names[int(tid)] if 0 <= int(tid) < len(tech_names) else "none"
+        if tech in PB_TECHS and note_has_overlap(notes, i):
+            tech = "none"
         params = sample_params(tech, rng) if tech != "none" else {}
         labels.append(NoteLabel(note_index=i, tech=tech, params=params))
     return labels
@@ -63,9 +102,10 @@ def apply_techniques_to_midi(
     *,
     checkpoint: Path | None = None,
     out_path: Path | None = None,
-    seed: int = 0,
+    seed: int | None = None,
     none_bias: float = 0.0,
     program: int | None = None,
+    top_voice: bool = True,
 ) -> Path:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ckpt = checkpoint or (CHECKPOINT_DIR / "guitar_tech_apply_last.pt")
@@ -74,19 +114,46 @@ def apply_techniques_to_midi(
 
     model, tech_names = load_apply_model(Path(ckpt), device)
     src = pm.PrettyMIDI(str(midi_path))
-    notes = pretty_midi_to_notes(src)
+    all_notes = pretty_midi_to_notes(src)
+    if seed is None:
+        seed = secrets.randbelow(2**31)
     rng = random.Random(seed)
-    labels = predict_labels(
-        notes, model, tech_names, device=device, rng=rng, none_bias=none_bias
-    )
+
+    if top_voice and all_notes:
+        voice_idx = top_voice_indices(all_notes)
+        voice_notes = [all_notes[i] for i in voice_idx]
+        voice_labels = predict_labels(
+            voice_notes,
+            model,
+            tech_names,
+            device=device,
+            rng=rng,
+            none_bias=none_bias,
+        )
+        labels = [NoteLabel(i, "none", {}) for i in range(len(all_notes))]
+        for j, lb in enumerate(voice_labels):
+            gi = voice_idx[j]
+            tech = lb.tech
+            # chord tones still occupy the PB channel
+            if tech in PB_TECHS and note_has_overlap(all_notes, gi):
+                tech = "none"
+            labels[gi] = NoteLabel(
+                gi, tech, lb.params if tech != "none" else {}
+            )
+        notes = all_notes
+    else:
+        notes = all_notes
+        labels = predict_labels(
+            notes, model, tech_names, device=device, rng=rng, none_bias=none_bias
+        )
+
     prog = DEFAULT_PROGRAM if program is None else int(program)
-    # preserve first non-drum program if present
     if program is None:
         for inst in src.instruments:
             if not inst.is_drum:
                 prog = int(inst.program)
                 break
-    out_midi = render_target(notes, labels, program=prog, rng=rng)
+    out_midi = render_target(notes, labels, program=prog, rng=rng, source=src)
 
     out = Path(out_path) if out_path else (
         OUTPUT_DIR / f"{Path(midi_path).stem}_tech.mid"
@@ -100,6 +167,8 @@ def apply_techniques_to_midi(
             {
                 "source": str(midi_path),
                 "checkpoint": str(ckpt),
+                "seed": seed,
+                "top_voice": top_voice,
                 "labels": [
                     {"note_index": lb.note_index, "tech": lb.tech, "params": lb.params}
                     for lb in labels
@@ -126,12 +195,17 @@ def main() -> None:
         default=CHECKPOINT_DIR / "guitar_tech_apply_last.pt",
     )
     parser.add_argument("--out", type=Path, default=None)
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=None)
     parser.add_argument(
         "--none-bias",
         type=float,
         default=0.0,
         help="none クラス logit に足すバイアス（大きいほど控えめ）",
+    )
+    parser.add_argument(
+        "--all-voices",
+        action="store_true",
+        help="最上声部だけなく全ノートに分類（和音では PB 奏法は自動スキップ）",
     )
     args = parser.parse_args()
     path = apply_techniques_to_midi(
@@ -140,6 +214,7 @@ def main() -> None:
         out_path=args.out,
         seed=args.seed,
         none_bias=args.none_bias,
+        top_voice=not args.all_voices,
     )
     print(f"wrote {path}")
     print(f"meta {path.with_suffix('.json')}")

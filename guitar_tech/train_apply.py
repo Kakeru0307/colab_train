@@ -14,14 +14,17 @@ from torch.utils.data import DataLoader, TensorDataset
 from .apply_model import TechApplyNet
 from .carriers import NoteEvent
 from .constants import APPLY_DATASET_DIR, CHECKPOINT_DIR
-from .features import note_features
+from .features import NOTE_FEATURE_DIM, note_features
 from .params import TECH_NAMES, TECH_TO_ID
+
+_NONE_ID = TECH_TO_ID["none"]
 
 
 def load_xy(dataset_dir: Path) -> tuple[np.ndarray, np.ndarray]:
     labels_dir = dataset_dir / "labels"
     xs: list[np.ndarray] = []
     ys: list[int] = []
+    unknown = 0
     for path in sorted(labels_dir.glob("*.json")):
         blob = json.loads(path.read_text(encoding="utf-8"))
         notes = [
@@ -39,8 +42,14 @@ def load_xy(dataset_dir: Path) -> tuple[np.ndarray, np.ndarray]:
             tech = str(lb["tech"])
             if idx < 0 or idx >= len(feats):
                 continue
+            tid = TECH_TO_ID.get(tech)
+            if tid is None:
+                unknown += 1
+                continue
             xs.append(feats[idx])
-            ys.append(TECH_TO_ID.get(tech, 0))
+            ys.append(tid)
+    if unknown:
+        print(f"skipped unknown tech labels: {unknown}")
     if not xs:
         raise RuntimeError(f"no labels in {labels_dir}")
     return np.stack(xs, axis=0).astype(np.float32), np.asarray(ys, dtype=np.int64)
@@ -66,7 +75,11 @@ def main() -> None:
     idx = np.arange(len(y))
     rng.shuffle(idx)
     n_val = max(1, int(len(idx) * args.val_ratio))
+    if n_val >= len(idx):
+        n_val = max(1, len(idx) // 5)
     val_idx, train_idx = idx[:n_val], idx[n_val:]
+    if len(train_idx) == 0:
+        raise RuntimeError(f"train set empty (n={len(y)}); need more labels")
 
     x_train = torch.from_numpy(x[train_idx])
     y_train = torch.from_numpy(y[train_idx])
@@ -114,7 +127,7 @@ def main() -> None:
             pred = logits.argmax(-1).cpu()
             acc = float((pred == y_val).float().mean().item())
             # non-none recall-ish
-            mask = y_val != 0
+            mask = y_val != _NONE_ID
             acc_pos = (
                 float((pred[mask] == y_val[mask]).float().mean().item())
                 if mask.any()
@@ -143,6 +156,7 @@ def main() -> None:
                 "tech_names": list(TECH_NAMES),
                 "hidden": args.hidden,
                 "feature_dim": int(x.shape[1]),
+                "note_feature_dim": NOTE_FEATURE_DIM,
                 "n_train_notes": int(len(train_idx)),
                 "n_val_notes": int(len(val_idx)),
                 "best_acc_nonzero": best,
