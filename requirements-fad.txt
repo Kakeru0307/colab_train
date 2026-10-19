@@ -1,0 +1,13 @@
+﻿# FAD isolated env (Python 3.10–3.12 only).
+#
+# fadtk==1.1.0 declares Requires-Python: >=3.10,<=3.13
+# Packaging treats "<=3.13" as <=3.13.0, so Colab's 3.13.15 is REJECTED.
+# Colab system Python also ships numpy>=2; fadtk needs numpy<2 — never mix.
+#
+# Use: uv venv ... --python 3.11 && uv pip install -r requirements-fad.txt
+fadtk==1.1.0
+numpy>=1.26.4,<2
+scipy>=1.11.2,<2
+soundfile>=0.12.1,<1
+torch>=2.3.0,<3
+torchvision>=0.22.0
