@@ -7,7 +7,7 @@ from pathlib import Path
 
 import muspy
 
-from program_utils import GUITAR_PROGRAM, remap_tonal_program
+from util.program_utils import GUITAR_PROGRAM, remap_tonal_program
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 

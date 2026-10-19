@@ -33,7 +33,7 @@ def build_backing_skeleton_music(
     bpm: float = 120.0,
     bars_per_chord: int = 1,
     chords_per_bar: int = 1,
-    raise_odd_loop_last: bool = True,
+    raise_odd_loop_last: bool = False,
     onset_duration: int = 2,
 ) -> muspy.Music:
     """進行の各コード頭にコードトーンだけ置いた骨格 MIDI を作る。
@@ -80,7 +80,7 @@ def save_backing_skeleton(
     bpm: float = 120.0,
     bars_per_chord: int = 1,
     chords_per_bar: int = 1,
-    raise_odd_loop_last: bool = True,
+    raise_odd_loop_last: bool = False,
 ) -> muspy.Music:
     music = build_backing_skeleton_music(
         progression=progression,

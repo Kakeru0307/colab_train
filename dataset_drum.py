@@ -8,9 +8,9 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from density_cond import make_bpm_cond_map
+from util.density_cond import make_bpm_cond_map
 from makeData.constants import BEAT_TYPES
-from midi_to_patch import normalize_pianoroll
+from util.midi_to_patch import normalize_pianoroll
 
 N_BEAT_TYPES = len(BEAT_TYPES)
 

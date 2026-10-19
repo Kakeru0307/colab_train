@@ -9,9 +9,9 @@ from pathlib import Path
 import muspy
 import numpy as np
 
-from density_cond import bpm_to_unit, midi_tempo_bpm
-from midi_to_patch import MidiPatch, midi_to_patches
-from skeleton import PAIR_MODES, make_input_tonal
+from util.density_cond import bpm_to_unit, midi_tempo_bpm
+from util.midi_to_patch import MidiPatch, midi_to_patches
+from util.skeleton import PAIR_MODES, make_input_tonal
 
 
 def song_id_from_path(midi_path: Path, raw_root: Path) -> str:

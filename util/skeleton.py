@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from midi_to_patch import TICKS_PER_BAR
-from program_utils import GUITAR_PROGRAM
+from util.midi_to_patch import TICKS_PER_BAR
+from util.program_utils import GUITAR_PROGRAM
 
 GUITAR_CATEGORY = GUITAR_PROGRAM // 8
 

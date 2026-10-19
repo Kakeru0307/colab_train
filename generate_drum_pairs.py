@@ -17,12 +17,12 @@ from pathlib import Path
 import muspy
 import numpy as np
 
-from density_cond import bpm_to_unit
+from util.density_cond import bpm_to_unit
 from makeData.constants import BEAT_BPM_RANGE, BEAT_TYPES, DEFAULT_BARS, KEYS
 from makeData.drum import beat_type_to_id, generate_drum_pattern
 from makeData.patterns import choose_progression
-from midi_to_patch import MidiPatch, midi_to_patches
-from progression_input import build_backing_skeleton_music
+from util.midi_to_patch import MidiPatch, midi_to_patches
+from util.progression_input import build_backing_skeleton_music
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_COUNT = 7200

@@ -6,6 +6,7 @@ import argparse
 import json
 import random
 import secrets
+import shutil
 from pathlib import Path
 
 import pretty_midi as pm
@@ -21,7 +22,7 @@ from .features import (
     pretty_midi_to_notes,
     top_voice_indices,
 )
-from .params import TECH_NAMES, sample_params
+from .params import TECH_NAMES, allowed_techs_for_role, sample_params
 from .render import NoteLabel, render_target
 
 
@@ -77,6 +78,7 @@ def predict_labels(
     device: torch.device,
     rng: random.Random,
     none_bias: float = 0.0,
+    allowed_techs: frozenset[str] | None = None,
 ) -> list[NoteLabel]:
     if not notes:
         return []
@@ -86,10 +88,18 @@ def predict_labels(
         logits = logits.clone()
         ni = _none_index(tech_names)
         logits[:, ni] = logits[:, ni] + float(none_bias)
+    # 役割で禁止されているクラスはマスクしてから argmax（バイアス操作ではない）
+    if allowed_techs is not None:
+        logits = logits.clone()
+        for i, name in enumerate(tech_names):
+            if name not in allowed_techs:
+                logits[:, i] = -1e9
     pred = logits.argmax(dim=-1).cpu().tolist()
     labels: list[NoteLabel] = []
     for i, tid in enumerate(pred):
         tech = tech_names[int(tid)] if 0 <= int(tid) < len(tech_names) else "none"
+        if allowed_techs is not None and tech not in allowed_techs:
+            tech = "none"
         if tech in PB_TECHS and note_has_overlap(notes, i):
             tech = "none"
         params = sample_params(tech, rng) if tech != "none" else {}
@@ -106,6 +116,8 @@ def apply_techniques_to_midi(
     none_bias: float = 0.0,
     program: int | None = None,
     top_voice: bool = True,
+    role: str = "lead",
+    instrument_name: str | None = None,
 ) -> Path:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ckpt = checkpoint or (CHECKPOINT_DIR / "guitar_tech_apply_last.pt")
@@ -118,6 +130,7 @@ def apply_techniques_to_midi(
     if seed is None:
         seed = secrets.randbelow(2**31)
     rng = random.Random(seed)
+    allowed = allowed_techs_for_role(role)
 
     if top_voice and all_notes:
         voice_idx = top_voice_indices(all_notes)
@@ -129,6 +142,7 @@ def apply_techniques_to_midi(
             device=device,
             rng=rng,
             none_bias=none_bias,
+            allowed_techs=allowed,
         )
         labels = [NoteLabel(i, "none", {}) for i in range(len(all_notes))]
         for j, lb in enumerate(voice_labels):
@@ -144,7 +158,13 @@ def apply_techniques_to_midi(
     else:
         notes = all_notes
         labels = predict_labels(
-            notes, model, tech_names, device=device, rng=rng, none_bias=none_bias
+            notes,
+            model,
+            tech_names,
+            device=device,
+            rng=rng,
+            none_bias=none_bias,
+            allowed_techs=allowed,
         )
 
     prog = DEFAULT_PROGRAM if program is None else int(program)
@@ -153,7 +173,21 @@ def apply_techniques_to_midi(
             if not inst.is_drum:
                 prog = int(inst.program)
                 break
-    out_midi = render_target(notes, labels, program=prog, rng=rng, source=src)
+    name = instrument_name
+    if name is None:
+        for inst in src.instruments:
+            if not inst.is_drum and inst.name:
+                name = inst.name
+                break
+    if name is None:
+        name = "Backing" if role == "backing" else "Lead"
+    # ensure source name survives render
+    for inst in src.instruments:
+        if not inst.is_drum:
+            inst.name = name
+    out_midi = render_target(
+        notes, labels, program=prog, rng=rng, source=src, instrument_name=name
+    )
 
     out = Path(out_path) if out_path else (
         OUTPUT_DIR / f"{Path(midi_path).stem}_tech.mid"
@@ -169,6 +203,7 @@ def apply_techniques_to_midi(
                 "checkpoint": str(ckpt),
                 "seed": seed,
                 "top_voice": top_voice,
+                "role": role,
                 "labels": [
                     {"note_index": lb.note_index, "tech": lb.tech, "params": lb.params}
                     for lb in labels
@@ -184,6 +219,75 @@ def apply_techniques_to_midi(
         encoding="utf-8",
     )
     return out
+
+
+def apply_techniques_overwrite(
+    midi_path: Path | str,
+    *,
+    checkpoint: Path | None = None,
+    seed: int | None = None,
+    none_bias: float = 0.0,
+    keep_bare: bool = True,
+    top_voice: bool = True,
+    role: str = "lead",
+    instrument_name: str | None = None,
+) -> Path:
+    """生成 MIDI に奏法をかけ、同じパスへ上書きする（本線の常時付与用）。"""
+    path = Path(midi_path)
+    if keep_bare:
+        bare = path.with_name(path.stem + "_bare.mid")
+        shutil.copy2(path, bare)
+    return apply_techniques_to_midi(
+        path,
+        checkpoint=checkpoint,
+        out_path=path,
+        seed=seed,
+        none_bias=none_bias,
+        top_voice=top_voice,
+        role=role,
+        instrument_name=instrument_name,
+    )
+
+
+def apply_techniques_to_muspy_music(
+    music: "muspy.Music",
+    *,
+    checkpoint: Path | None = None,
+    seed: int | None = None,
+    none_bias: float = 0.0,
+    top_voice: bool = True,
+    role: str = "lead",
+    track_name: str | None = None,
+):
+    """muspy.Music → 一時 MIDI で奏法付与 → muspy.Music（form 用）。"""
+    import tempfile
+
+    import muspy
+    from patch_to_midi import save_music
+
+    name = track_name or ("Backing" if role == "backing" else "Lead")
+    for t in music.tracks:
+        if not t.is_drum:
+            t.name = name
+
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "part.mid"
+        save_music(music, p)
+        apply_techniques_to_midi(
+            p,
+            checkpoint=checkpoint,
+            out_path=p,
+            seed=seed,
+            none_bias=none_bias,
+            top_voice=top_voice,
+            role=role,
+            instrument_name=name,
+        )
+        out = muspy.read_midi(p)
+        for t in out.tracks:
+            if not t.is_drum:
+                t.name = name
+        return out
 
 
 def main() -> None:

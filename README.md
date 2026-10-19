@@ -19,7 +19,7 @@ Stage 1 / Stage 2 は **同じ `--mode`** でパッチ化してください。�
 |---|---|
 | `prepare_all.py` | **合成 + TECHS の一括パッチ化**（Colab 用メイン） |
 | `generate_lead_pairs.py` | リード学習用ペア生成 |
-| `skeleton.py` | 骨格抽出（`downbeat_chord` 等） |
+| `util/skeleton.py` | 骨格抽出（`downbeat_chord` 等） |
 | `makeData/` | 合成 MIDI 生成（Colab 上で最大 6,000 本） |
 | `data/raw/guitar-techs/` | 生 MIDI（98 曲） |
 | `colab_train.ipynb` | 実行ノートブック |
@@ -50,15 +50,33 @@ BPM はビン分布サンプリング。整理はノート内で `organize_va_bp
 
 | 作業 | どこでやるか |
 |---|---|
-| コード編集（`makeData/`, `skeleton.py` 等） | ローカル → `colab_train` を Git push |
+| コード編集（`makeData/`, `util/` 等） | ローカル → `colab_train` を Git push |
 | **合成 MIDI 生成** | **Colab**（`prepare_all.py` が自動実行） |
 | **パッチ化（pairs）** | **Colab のみ**（ローカルで `prepare_dataset.py` は不要） |
 | Stage 1 / 2 学習 | Colab |
 | Structure Prior 学習 | **Colab**（`TRAIN_STRUCTURE_PRIOR` + balanced_116 + 任意 EMOPIA） |
 | ギター奏法付与（TechApply） | **Colab**（`GEN_GUITAR_TECH_APPLY` + `TRAIN_GUITAR_TECH_APPLY`） |
 | 推論・DAW 確認 | ローカル `prttype/` |
+| **FAD（CLAP）** | **Colab GPU**（`colab_fad.ipynb`）。WAV は Drive 経由 |
 
 ローカルで `python -m makeData.generate` して試すことはできますが、**学習用 pairs は Colab で作ってください**（容量・GPU 環境の都合）。
+
+## FAD（Colab GPU）
+
+ローカル CPU は遅いので GPU で回す。
+
+1. ローカルで zip を作る（リポジトリルート）:
+
+```powershell
+Compress-Archive -Path prttype\eval\fad\ref_wav, prttype\eval\fad\gen_wav `
+  -DestinationPath fad_wav.zip -Force
+```
+
+2. `fad_wav.zip` を Drive の `MyDrive/fad_eval/` に置く  
+3. Colab で `colab_fad.ipynb` を開き、ランタイムを **GPU** にする  
+4. セルを上から実行（結果: `MyDrive/fad_eval/fad_result.json`）
+
+スクリプト本体: `scripts/compute_fad.py`（`prttype/scripts/compute_fad.py` と同内容）
 
 ## Colab での実行（推奨）
 

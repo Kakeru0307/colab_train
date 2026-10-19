@@ -89,12 +89,19 @@ def render_target(
     program: int = 29,
     rng: random.Random | None = None,
     source: pm.PrettyMIDI | None = None,
+    instrument_name: str | None = None,
 ) -> pm.PrettyMIDI:
     rng = rng or random.Random(0)
     midi = pm.PrettyMIDI()
     if source is not None:
         copy_timing(source, midi)
-    inst = pm.Instrument(program=program, name="target")
+    inst_name = instrument_name or "Guitar"
+    if instrument_name is None and source is not None:
+        for src_inst in source.instruments:
+            if not src_inst.is_drum:
+                inst_name = src_inst.name or inst_name
+                break
+    inst = pm.Instrument(program=program, name=inst_name)
     label_by_i = {lb.note_index: lb for lb in labels}
 
     for i, n in enumerate(notes):

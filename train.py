@@ -8,10 +8,10 @@ from pathlib import Path
 import torch
 from torch import optim
 
-from checkpoint_paths import part_ckpt_path, role_from_checkpoint_dir
+from util.checkpoint_paths import part_ckpt_path, role_from_checkpoint_dir
 from dataset import PatchPairDataset, SinglePatchDataset, get_dataloader
 from model import DEFAULT_LATENT_DIM, build_cvae, build_unet
-from program_utils import GUITAR_PROGRAM
+from util.program_utils import GUITAR_PROGRAM
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 GUITAR_CATEGORY = GUITAR_PROGRAM // 8

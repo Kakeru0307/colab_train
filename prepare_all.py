@@ -10,7 +10,7 @@ from makeData.constants import DEFAULT_SYNTHETIC_COUNT
 from makeData.generate import count_existing_midis, generate_dataset
 from prepare_dataset import prepare_pairs
 from remap_guitar_programs import remap_directory
-from skeleton import PAIR_MODES
+from util.skeleton import PAIR_MODES
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 

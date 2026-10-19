@@ -41,8 +41,8 @@ REPO_ROOT_DIR = SCRIPT_DIR.parent
 if str(REPO_ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT_DIR))
 
-from midi_to_patch import TICKS_PER_BAR, PATCH_BARS, midi_to_patches  # noqa: E402
-from program_utils import GUITAR_PROGRAM  # noqa: E402
+from util.midi_to_patch import TICKS_PER_BAR, PATCH_BARS, midi_to_patches  # noqa: E402
+from util.program_utils import GUITAR_PROGRAM  # noqa: E402
 
 GUITAR_CATEGORY = GUITAR_PROGRAM // 8
 PATCH_TICKS = PATCH_BARS * TICKS_PER_BAR  # 128

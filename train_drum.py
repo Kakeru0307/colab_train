@@ -14,7 +14,7 @@ from pathlib import Path
 import torch
 from torch import nn, optim
 
-from checkpoint_paths import part_ckpt_path, role_from_checkpoint_dir
+from util.checkpoint_paths import part_ckpt_path, role_from_checkpoint_dir
 from dataset_drum import get_drum_dataloader
 from model import build_cvae, build_unet
 

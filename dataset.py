@@ -8,8 +8,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from density_cond import make_bpm_cond_map
-from midi_to_patch import normalize_pianoroll
+from util.density_cond import make_bpm_cond_map
+from util.midi_to_patch import normalize_pianoroll
 
 
 class PatchPairDataset(Dataset):

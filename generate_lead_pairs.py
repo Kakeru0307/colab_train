@@ -27,9 +27,9 @@ from makeData.patterns import (
     generate_progression_lead,
     sample_backing_power_chord_onsets,
 )
-from midi_to_patch import PATCH_TICKS, TICKS_PER_BAR, MidiPatch, midi_to_patches
-from progression_input import build_backing_skeleton_music
-from density_cond import bpm_to_unit
+from util.midi_to_patch import PATCH_TICKS, TICKS_PER_BAR, MidiPatch, midi_to_patches
+from util.progression_input import build_backing_skeleton_music
+from util.density_cond import bpm_to_unit
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 

@@ -4,20 +4,18 @@
   {role}_unet_last.pt   … 通常 U-Net
   {role}_cvae_last.pt   … CVAE
   structure_prior_last.pt
-  template_prior_last.pt
 
-旧名（unet_last.pt / prior_last.pt / last.pt）も読み込み時にフォールバックする。
+旧名（unet_last.pt / prior_last.pt）も読み込み時にフォールバックする。
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-SCRIPT_DIR = Path(__file__).resolve().parent
+SCRIPT_DIR = Path(__file__).resolve().parents[1]  # prttype/（または colab_train/）
 CHECKPOINTS = SCRIPT_DIR / "checkpoints"
 
 STRUCTURE_PRIOR_NAME = "structure_prior_last.pt"
-TEMPLATE_PRIOR_NAME = "template_prior_last.pt"
 
 
 def part_ckpt_name(role: str, *, cvae: bool) -> str:
@@ -66,17 +64,6 @@ def resolve_structure_prior_checkpoint(checkpoint_dir: Path | None = None) -> Pa
         return legacy
     if legacy_va.is_file():
         return legacy_va
-    return primary
-
-
-def resolve_template_prior_checkpoint(checkpoint_dir: Path | None = None) -> Path:
-    root = Path(checkpoint_dir) if checkpoint_dir is not None else (CHECKPOINTS / "template_prior")
-    primary = root / TEMPLATE_PRIOR_NAME
-    legacy = root / "last.pt"
-    if primary.is_file():
-        return primary
-    if legacy.is_file():
-        return legacy
     return primary
 
 

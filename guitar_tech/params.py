@@ -27,6 +27,21 @@ TECH_NAMES: tuple[str, ...] = (
 
 TECH_TO_ID = {n: i for i, n in enumerate(TECH_NAMES)}
 
+# ノートを複数に割る奏法（和音バッキングだと同時発音が爆発する）
+NOTE_MULTIPLY_TECHS = frozenset(
+    {"tremolo", "trill", "hammer", "pull", "tap"}
+)
+
+# 役割別の許可集合（分類結果をここで落とす。logit バイアスではない）
+LEAD_ALLOWED_TECHS = frozenset(TECH_NAMES)
+BACKING_ALLOWED_TECHS = frozenset(TECH_NAMES) - NOTE_MULTIPLY_TECHS
+
+
+def allowed_techs_for_role(role: str) -> frozenset[str]:
+    if role == "backing":
+        return BACKING_ALLOWED_TECHS
+    return LEAD_ALLOWED_TECHS
+
 
 def sample_params(tech: str, rng: random.Random) -> dict[str, Any]:
     if tech == "none":
