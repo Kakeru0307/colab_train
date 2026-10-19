@@ -83,7 +83,7 @@ def iter_bar_windows(n_bars: int, *, window: int = DEFAULT_BARS, stride: int = 4
     while start + window <= n_bars:
         yield start
         start += stride
-    # 末尾を取りこぼさない
+    # 末尾を取りこぼさない（stride でアライメントされていない最後のウィンドウ）
     last = n_bars - window
     if last > 0 and last % stride != 0:
         yield last

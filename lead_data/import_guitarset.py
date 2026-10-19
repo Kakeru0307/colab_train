@@ -186,21 +186,20 @@ def import_guitarset(
         if n_bars < window_bars:
             continue
         stem = path.stem
+        # コード注釈は song 単位で一度だけ取得する（ループ内で毎回呼ばない）
+        full_chords = _jams_chords_per_bar(jams, bars=n_bars, bpm=bpm)
         song_patches = 0
         for wi, start_bar in enumerate(iter_bar_windows(n_bars, window=window_bars, stride=stride_bars)):
             win = slice_notes_window(notes, start_bar=start_bar, bars=window_bars)
             if len(win) < min_onsets:
                 continue
             key = estimate_key_from_notes(win)
-            chords = _jams_chords_per_bar(jams, bars=window_bars, bpm=bpm)
-            if chords is None:
-                chords = estimate_chords_per_bar(win, bars=window_bars, key=key)
-            else:
-                # re-slice chord timeline for this window
-                full = _jams_chords_per_bar(jams, bars=n_bars, bpm=bpm) or chords
-                chords = full[start_bar : start_bar + window_bars]
+            if full_chords is not None:
+                chords = full_chords[start_bar : start_bar + window_bars]
                 if len(chords) < window_bars:
                     chords = estimate_chords_per_bar(win, bars=window_bars, key=key)
+            else:
+                chords = estimate_chords_per_bar(win, bars=window_bars, key=key)
             try:
                 target = notes_to_music(win, bars=window_bars, bpm=bpm)
                 inp = build_skeleton_from_bar_chords(chords, bpm=bpm)

@@ -32,7 +32,12 @@ def _iter_midi_files(root: Path) -> list[Path]:
 
 
 def _load_music(path: Path) -> muspy.Music:
-    return muspy.read_midi(path)
+    music = muspy.read_midi(path)
+    # muspy.read_midi は MIDI ファイルの native resolution を保持する（480 / 960 等）。
+    # downstream は resolution=4 (16 ticks/bar) を前提にしているので正規化する。
+    if music.resolution != 4:
+        muspy.adjust_resolution(music, 4)
+    return music
 
 
 def import_synthtab(
