@@ -221,6 +221,95 @@ def apply_techniques_to_midi(
     return out
 
 
+def _notes_from_instrument(inst: pm.Instrument) -> list[NoteEvent]:
+    notes = [
+        NoteEvent(
+            pitch=int(n.pitch),
+            start=float(n.start),
+            end=float(n.end),
+            velocity=int(n.velocity),
+        )
+        for n in inst.notes
+    ]
+    notes.sort(key=lambda n: (n.start, n.pitch))
+    return notes
+
+
+def labels_for_section_techs(
+    notes: list[NoteEvent],
+    sections: list[tuple[float, float, str]],
+    rng: random.Random,
+) -> list[NoteLabel]:
+    """ノート開始時刻が含まれる区間の奏法を付ける。分類モデルは使わない。"""
+    labels: list[NoteLabel] = []
+    for i, note in enumerate(notes):
+        tech = "none"
+        for start, end, name in sections:
+            if start <= note.start < end:
+                tech = name if name in TECH_NAMES else "none"
+                break
+        if tech == "vibrato" and note.duration < 0.28:
+            tech = "none"
+        if tech == "slide" and i + 1 >= len(notes):
+            tech = "none"
+        params = sample_params(tech, rng) if tech != "none" else {}
+        if tech == "slide" and params.get("mode") == "notes" and i + 1 >= len(notes):
+            params["mode"] = "pb"
+        uses_pb = tech in PB_TECHS and not (
+            tech == "slide" and params.get("mode") == "notes"
+        )
+        if uses_pb and note_has_overlap(notes, i):
+            tech, params = "none", {}
+        labels.append(NoteLabel(note_index=i, tech=tech, params=params))
+    return labels
+
+
+def apply_section_techs_to_track(
+    midi_path: Path | str,
+    sections: list[tuple[float, float, str]],
+    *,
+    track_name: str = "Lead",
+    seed: int | None = None,
+    out_path: Path | None = None,
+) -> Path:
+    """区間 (開始秒, 終了秒, 奏法名) を、指定名のトラックへ書き込む。
+
+    他のトラックは残す。奏法名は guitar_tech.params.TECH_NAMES。
+    """
+    path = Path(midi_path)
+    src = pm.PrettyMIDI(str(path))
+    lead_indexes = [
+        i
+        for i, inst in enumerate(src.instruments)
+        if inst.name == track_name and not inst.is_drum
+    ]
+    if not lead_indexes:
+        return path
+    if seed is None:
+        seed = secrets.randbelow(2**31)
+    rng = random.Random(seed)
+    for idx in lead_indexes:
+        inst = src.instruments[idx]
+        notes = _notes_from_instrument(inst)
+        if not notes:
+            continue
+        labels = labels_for_section_techs(notes, sections, rng)
+        rendered = render_target(
+            notes,
+            labels,
+            program=int(inst.program),
+            rng=rng,
+            source=src,
+            instrument_name=track_name,
+        )
+        if rendered.instruments:
+            src.instruments[idx] = rendered.instruments[0]
+    out = Path(out_path) if out_path else path
+    out.parent.mkdir(parents=True, exist_ok=True)
+    src.write(str(out))
+    return out
+
+
 def apply_techniques_overwrite(
     midi_path: Path | str,
     *,
