@@ -156,9 +156,11 @@ class FiLMLayer(nn.Module):
         super().__init__()
         self.gamma = nn.Linear(latent_dim, channels)
         self.beta = nn.Linear(latent_dim, channels)
-        # 初期値: γ=1, β=0 → 学習初期は変調なしと等価
-        nn.init.ones_(self.gamma.weight)
-        nn.init.zeros_(self.gamma.bias)
+        # 初期値: γ=1, β=0 → 学習初期は変調なしと等価。
+        # weight=0 / bias=1 にしないと γ≈Σz になり全チャンネル同一スケールで
+        # デコーダ多段積算後に局所情報が潰れる。
+        nn.init.zeros_(self.gamma.weight)
+        nn.init.ones_(self.gamma.bias)
         nn.init.zeros_(self.beta.weight)
         nn.init.zeros_(self.beta.bias)
 
