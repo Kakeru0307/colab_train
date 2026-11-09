@@ -45,10 +45,22 @@ def weighted_mse_loss(
     return (weights * (outputs - targets) ** 2).mean()
 
 
-def kl_divergence(mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
-    """q(z|x,y) と標準正規 N(0, I) の KL ダイバージェンス（バッチ平均）。"""
-    per_sample = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1)
-    return per_sample.mean()
+def kl_divergence(
+    mu: torch.Tensor,
+    logvar: torch.Tensor,
+    *,
+    free_bits: float = 0.0,
+) -> torch.Tensor:
+    """q(z|x,y) と標準正規 N(0, I) の KL ダイバージェンス（バッチ平均）。
+
+    free_bits > 0 のとき、各潜在次元の KL が free_bits を下回らないよう clamp する。
+    これにより decoder が z を完全に無視して posterior collapse するのを防ぐ。
+    """
+    # (B, latent_dim)
+    kl_per_dim = -0.5 * (1 + logvar - mu.pow(2) - logvar.exp())
+    if free_bits > 0.0:
+        kl_per_dim = torch.clamp(kl_per_dim, min=free_bits)
+    return kl_per_dim.mean()
 
 
 def kl_weight(epoch: int, *, beta: float, anneal_epochs: int) -> float:
@@ -106,6 +118,7 @@ def train(
     latent_dim: int = DEFAULT_LATENT_DIM,
     beta: float = 1.0,
     kl_anneal_epochs: int = 10,
+    free_bits: float = 0.0,
     require_power_cond: bool = False,
     mask_ratio: float = 0.0,
     use_film: bool = False,
@@ -172,7 +185,7 @@ def train(
                     onset_weight=onset_weight,
                     midbar_onset_bonus=midbar_onset_bonus,
                 )
-                kl = kl_divergence(mu, logvar)
+                kl = kl_divergence(mu, logvar, free_bits=free_bits)
                 loss = recon + beta_t * kl
                 total_recon += recon.item()
                 total_kl += kl.item()
@@ -292,8 +305,17 @@ def main() -> None:
     parser.add_argument(
         "--kl-anneal-epochs",
         type=int,
-        default=10,
-        help="beta を 0 から線形に増やす epoch 数（posterior collapse 回避）",
+        default=20,
+        help="KL 圧力を 0 から徐々に増やす epoch 数。長いほど崩壊しにくい（デフォルト 20）",
+    )
+    parser.add_argument(
+        "--free-bits",
+        type=float,
+        default=0.0,
+        help=(
+            "z の各次元が持つべき最低情報量（KL の下限）。"
+            "0.5 程度で z を無視した崩壊を防げる。0 で無効（従来動作）"
+        ),
     )
     parser.add_argument(
         "--mask-ratio",
@@ -331,6 +353,7 @@ def main() -> None:
         latent_dim=args.latent_dim,
         beta=args.beta,
         kl_anneal_epochs=args.kl_anneal_epochs,
+        free_bits=args.free_bits,
         require_power_cond=args.require_power_cond,
         mask_ratio=args.mask_ratio,
         use_film=args.use_film,
