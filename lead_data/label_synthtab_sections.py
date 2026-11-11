@@ -6,6 +6,7 @@ Phase0 スパイク: ``--spike N`` で数曲だけ推論しラベル分布を表
 依存（Colab 想定）:
   - pretty_midi / fluidsynth or pretty_midi.synthesize
   - SongFormer (transformers + HF ASLP-lab/SongFormer)
+  - pip: muq omegaconf ema-pytorch loguru x-transformers huggingface_hub
 """
 
 from __future__ import annotations
@@ -94,22 +95,109 @@ def render_midi_to_wav(midi_path: Path, wav_path: Path, *, sample_rate: int = 24
     sf.write(str(wav_path), audio.astype(np.float32), sample_rate)
 
 
+_SONGFORMER_PIP = (
+    "muq",
+    "omegaconf",
+    "transformers",
+    "huggingface_hub",
+    "ema-pytorch",
+    "loguru",
+    "x-transformers",
+)
+
+
+def _ensure_pkg_inits(root: Path, rel: str) -> None:
+    """namespace package だと後段の dataset.py に負けるので通常パッケージにする。"""
+    cur = root
+    for part in Path(rel).parts:
+        cur = cur / part
+        if not cur.is_dir():
+            return
+        init = cur / "__init__.py"
+        if not init.is_file():
+            init.write_text("", encoding="utf-8")
+
+
+def _evict_module_tree(name: str, keep_under: Path) -> None:
+    import sys
+
+    keep = keep_under.resolve()
+    for key in list(sys.modules):
+        if key != name and not key.startswith(name + "."):
+            continue
+        origin = getattr(sys.modules[key], "__file__", None) or ""
+        try:
+            if origin and Path(origin).resolve().is_relative_to(keep):
+                continue
+        except (ValueError, OSError):
+            pass
+        sys.modules.pop(key, None)
+
+
+def _ensure_msaf_stub() -> None:
+    """推論では msaf を使わない。未インストールならダミーを置く。"""
+    import sys
+    import types
+
+    try:
+        import msaf  # noqa: F401
+        return
+    except ImportError:
+        pass
+    msaf = types.ModuleType("msaf")
+    msaf_eval = types.ModuleType("msaf.eval")
+    msaf_eval.compute_results = lambda *a, **k: {}
+    msaf.eval = msaf_eval
+    sys.modules["msaf"] = msaf
+    sys.modules["msaf.eval"] = msaf_eval
+
+
+def _prepare_songformer_path(local_dir: str) -> None:
+    """HF スナップショットを sys.path 先頭へ。repo の dataset.py / model.py と衝突させない。"""
+    import sys
+
+    root = Path(local_dir)
+    for rel in (
+        "dataset",
+        "postprocessing",
+        "musicfm",
+        "musicfm/model",
+        "musicfm/modules",
+    ):
+        _ensure_pkg_inits(root, rel)
+    _evict_module_tree("dataset", root)
+    _evict_module_tree("model", root)
+    _evict_module_tree("musicfm", root)
+    _evict_module_tree("postprocessing", root)
+    if local_dir in sys.path:
+        sys.path.remove(local_dir)
+    sys.path.insert(0, local_dir)
+
+
 def load_songformer(device: str = "cuda:0"):
     """HF SongFormer をロード。"""
     import os
-    import sys
 
     missing = []
-    for mod in ("muq", "omegaconf", "transformers", "huggingface_hub"):
+    for pip_name, mod in (
+        ("muq", "muq"),
+        ("omegaconf", "omegaconf"),
+        ("transformers", "transformers"),
+        ("huggingface_hub", "huggingface_hub"),
+        ("ema-pytorch", "ema_pytorch"),
+        ("loguru", "loguru"),
+        ("x-transformers", "x_transformers"),
+    ):
         try:
             __import__(mod)
         except ImportError:
-            missing.append(mod)
+            missing.append(pip_name)
     if missing:
         raise ImportError(
             "SongFormer 依存が不足: "
             + ", ".join(missing)
-            + " → pip install muq omegaconf transformers huggingface_hub accelerate einops librosa"
+            + " → pip install "
+            + " ".join(_SONGFORMER_PIP)
         )
 
     from huggingface_hub import snapshot_download
@@ -123,8 +211,8 @@ def load_songformer(device: str = "cuda:0"):
         allow_patterns="*",
         ignore_patterns=["SongFormer.pt", "SongFormer.safetensors"],
     )
-    if local_dir not in sys.path:
-        sys.path.insert(0, local_dir)
+    _prepare_songformer_path(local_dir)
+    _ensure_msaf_stub()
     os.environ["SONGFORMER_LOCAL_DIR"] = local_dir
     model = AutoModel.from_pretrained(
         local_dir,
