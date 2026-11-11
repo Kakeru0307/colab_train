@@ -5,11 +5,12 @@ muspy>=0.5.0
 numpy>=1.24
 pretty_midi>=0.2.11
 soundfile>=0.12
-huggingface_hub>=0.20,<0.34
-# SongFormer 公式は 4.51.1。新しい transformers は meta init で落ちる
+# SongFormer 公式は transformers==4.51.1（これより新しいと meta init で落ちる）。
+# Colab 付属の gradio/diffusers は huggingface-hub>=1 を要求するため警告が出るが、
+# 本ノートでは未使用。無視してよい。
 transformers==4.51.1
 tokenizers==0.21.1
-accelerate>=0.27,<1.6
+accelerate>=0.27
 einops>=0.7
 librosa>=0.10
 omegaconf>=2.3
