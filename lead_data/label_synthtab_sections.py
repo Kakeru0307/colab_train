@@ -156,7 +156,7 @@ def _prepare_songformer_path(local_dir: str) -> None:
     """HF スナップショットを sys.path 先頭へ。repo の dataset.py / model.py と衝突させない。"""
     import sys
 
-    root = Path(local_dir)
+    root = Path(local_dir).resolve()
     for rel in (
         "dataset",
         "postprocessing",
@@ -169,9 +169,21 @@ def _prepare_songformer_path(local_dir: str) -> None:
     _evict_module_tree("model", root)
     _evict_module_tree("musicfm", root)
     _evict_module_tree("postprocessing", root)
-    if local_dir in sys.path:
-        sys.path.remove(local_dir)
-    sys.path.insert(0, local_dir)
+
+    repo_root = Path(__file__).resolve().parents[1]
+    blocked = {repo_root.resolve(), Path.cwd().resolve()}
+    cleaned: list[str] = []
+    for p in sys.path:
+        if p in ("", "."):
+            continue
+        try:
+            if Path(p).resolve() in blocked:
+                continue
+        except (OSError, RuntimeError):
+            pass
+        cleaned.append(p)
+    sys.path[:] = cleaned
+    sys.path.insert(0, str(root))
 
 
 def load_songformer(device: str = "cuda:0"):
@@ -200,17 +212,22 @@ def load_songformer(device: str = "cuda:0"):
             + " ".join(_SONGFORMER_PIP)
         )
 
+    import inspect
+
     from huggingface_hub import snapshot_download
     from transformers import AutoModel
 
-    local_dir = snapshot_download(
-        repo_id="ASLP-lab/SongFormer",
-        repo_type="model",
-        local_dir_use_symlinks=False,
-        resume_download=True,
-        allow_patterns="*",
-        ignore_patterns=["SongFormer.pt", "SongFormer.safetensors"],
-    )
+    snap_kw: dict = {
+        "repo_id": "ASLP-lab/SongFormer",
+        "repo_type": "model",
+        "ignore_patterns": ["SongFormer.pt", "SongFormer.safetensors"],
+    }
+    snap_params = inspect.signature(snapshot_download).parameters
+    if "local_dir_use_symlinks" in snap_params:
+        snap_kw["local_dir_use_symlinks"] = False
+    if "resume_download" in snap_params:
+        snap_kw["resume_download"] = True
+    local_dir = snapshot_download(**snap_kw)
     _prepare_songformer_path(local_dir)
     _ensure_msaf_stub()
     os.environ["SONGFORMER_LOCAL_DIR"] = local_dir
