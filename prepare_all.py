@@ -133,10 +133,14 @@ def prepare_all(
         first_patch_only=True,  # 8小節ちょうどでも patches:2 になるバグ回避
     )
 
-    if not RAW_GUITAR_TECHS.is_dir():
-        raise FileNotFoundError(f"Guitar-TECHS がありません: {RAW_GUITAR_TECHS}")
+    empty_techs = {"midi_files": 0, "total_patches": 0}
+    techs_pairs_dir = PAIRS_GUITAR_TECHS_CURATED
+    techs_label = "skipped"
+    guitar_pairs = empty_techs
 
-    if techs_full:
+    if not RAW_GUITAR_TECHS.is_dir():
+        print(f"Guitar-TECHS なし（{RAW_GUITAR_TECHS}）。合成のみ続行")
+    elif techs_full:
         print("\n=== Step 4: Guitar-TECHS 全量をパッチ化 ===")
         techs_pairs_dir = PAIRS_GUITAR_TECHS
         guitar_pairs = prepare_pairs(
@@ -151,16 +155,17 @@ def prepare_all(
         print("  (P3_music 全件 + P1/P2_chords 各最大 6 本)")
         curated = list_curated_techs_midis(RAW_GUITAR_TECHS)
         if not curated:
-            raise FileNotFoundError("curated TECHS MIDI が 0 件です")
-        techs_pairs_dir = PAIRS_GUITAR_TECHS_CURATED
-        guitar_pairs = prepare_pairs(
-            RAW_GUITAR_TECHS,
-            techs_pairs_dir,
-            mode=mode,
-            min_onsets=min_onsets,
-            midi_files=curated,
-        )
-        techs_label = "curated"
+            print("curated TECHS MIDI が 0 件。合成のみ続行")
+        else:
+            techs_pairs_dir = PAIRS_GUITAR_TECHS_CURATED
+            guitar_pairs = prepare_pairs(
+                RAW_GUITAR_TECHS,
+                techs_pairs_dir,
+                mode=mode,
+                min_onsets=min_onsets,
+                midi_files=curated,
+            )
+            techs_label = "curated"
 
     summary = {
         "mode": mode,
