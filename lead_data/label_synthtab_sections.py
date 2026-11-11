@@ -153,7 +153,7 @@ def _ensure_msaf_stub() -> None:
 
 
 def _prepare_songformer_path(local_dir: str) -> None:
-    """HF スナップショットを sys.path 先頭へ。repo の dataset.py / model.py と衝突させない。"""
+    """HF スナップショットを sys.path 先頭へ（repo の dataset.py より先に解決させる）。"""
     import sys
 
     root = Path(local_dir).resolve()
@@ -165,29 +165,17 @@ def _prepare_songformer_path(local_dir: str) -> None:
         "musicfm/modules",
     ):
         _ensure_pkg_inits(root, rel)
-    _evict_module_tree("dataset", root)
-    _evict_module_tree("model", root)
-    _evict_module_tree("musicfm", root)
-    _evict_module_tree("postprocessing", root)
-
-    repo_root = Path(__file__).resolve().parents[1]
-    blocked = {repo_root.resolve(), Path.cwd().resolve()}
-    cleaned: list[str] = []
-    for p in sys.path:
-        if p in ("", "."):
-            continue
-        try:
-            if Path(p).resolve() in blocked:
-                continue
-        except (OSError, RuntimeError):
-            pass
-        cleaned.append(p)
-    sys.path[:] = cleaned
-    sys.path.insert(0, str(root))
+    # 既に repo 側の dataset.py 等が import 済みなら捨てる
+    for name in ("dataset", "model", "musicfm", "postprocessing"):
+        _evict_module_tree(name, root)
+    path = str(root)
+    if path in sys.path:
+        sys.path.remove(path)
+    sys.path.insert(0, path)
 
 
 def load_songformer(device: str = "cuda:0"):
-    """HF SongFormer をロード。"""
+    """HF SongFormer をロード（README 準拠 + Colab で必要な最小補正）。"""
     import os
 
     missing = []
@@ -212,27 +200,18 @@ def load_songformer(device: str = "cuda:0"):
             + " ".join(_SONGFORMER_PIP)
         )
 
-    import inspect
-
     from huggingface_hub import snapshot_download
     from transformers import AutoModel
 
-    snap_kw: dict = {
-        "repo_id": "ASLP-lab/SongFormer",
-        "repo_type": "model",
-        "ignore_patterns": ["SongFormer.pt", "SongFormer.safetensors"],
-    }
-    snap_params = inspect.signature(snapshot_download).parameters
-    if "local_dir_use_symlinks" in snap_params:
-        snap_kw["local_dir_use_symlinks"] = False
-    if "resume_download" in snap_params:
-        snap_kw["resume_download"] = True
-    local_dir = snapshot_download(**snap_kw)
+    local_dir = snapshot_download(
+        repo_id="ASLP-lab/SongFormer",
+        repo_type="model",
+        ignore_patterns=["SongFormer.pt", "SongFormer.safetensors"],
+    )
     _prepare_songformer_path(local_dir)
     _ensure_msaf_stub()
     os.environ["SONGFORMER_LOCAL_DIR"] = local_dir
-    # SongFormer は __init__ 内で MuQ/MusicFM を CPU 実体化するため、
-    # transformers 既定の meta/_fast_init と衝突する。
+    # 新しい transformers は meta init が既定。SongFormer の __init__ は CPU 実体化するため無効化。
     model = AutoModel.from_pretrained(
         local_dir,
         trust_remote_code=True,
