@@ -4,9 +4,9 @@ Phase0 スパイク: ``--spike N`` で数曲だけ推論しラベル分布を表
 本実装: ``--pairs-dir`` へ section 付き pair を書き出す。
 
 依存（Colab 想定）:
-  - pretty_midi / fluidsynth or pretty_midi.synthesize
-  - SongFormer (transformers + HF ASLP-lab/SongFormer)
-  - pip: muq omegaconf ema-pytorch loguru x-transformers huggingface_hub
+  - requirements.txt（SongFormer 用 pip 含む）
+  - apt: fluidsynth fluid-soundfont-gm（MIDI レンダ）
+  - HF: ASLP-lab/SongFormer
 """
 
 from __future__ import annotations
