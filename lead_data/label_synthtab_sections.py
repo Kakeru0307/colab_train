@@ -231,10 +231,14 @@ def load_songformer(device: str = "cuda:0"):
     _prepare_songformer_path(local_dir)
     _ensure_msaf_stub()
     os.environ["SONGFORMER_LOCAL_DIR"] = local_dir
+    # SongFormer は __init__ 内で MuQ/MusicFM を CPU 実体化するため、
+    # transformers 既定の meta/_fast_init と衝突する。
     model = AutoModel.from_pretrained(
         local_dir,
         trust_remote_code=True,
         low_cpu_mem_usage=False,
+        device_map=None,
+        _fast_init=False,
     )
     model.to(device)
     model.eval()
