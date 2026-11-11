@@ -6,7 +6,9 @@ import argparse
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 from torch import optim
+from torch.cuda.amp import GradScaler, autocast
 
 from util.checkpoint_paths import part_ckpt_path, role_from_checkpoint_dir
 from dataset import PatchPairDataset, SinglePatchDataset, get_dataloader
@@ -120,10 +122,17 @@ def train(
     kl_anneal_epochs: int = 10,
     free_bits: float = 0.0,
     require_power_cond: bool = False,
+    section_cond: bool = False,
+    require_section_cond: bool = False,
     mask_ratio: float = 0.0,
     use_film: bool = False,
+    aux_loss_weight: float = 0.0,
 ) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    use_amp = device.type == "cuda"
+    if use_amp:
+        torch.backends.cudnn.benchmark = True
+    scaler = GradScaler(enabled=use_amp)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     input_dir, target_dir = resolve_pair_dirs(data_dir, pairs_dir)
 
@@ -137,6 +146,8 @@ def train(
             input_dir,
             target_dir,
             require_power_cond=require_power_cond,
+            section_cond=section_cond,
+            require_section_cond=require_section_cond,
         )
     print(f"学習パッチ数: {len(dataset)}")
     sample_input, _ = dataset[0]
@@ -165,48 +176,64 @@ def train(
         print(f"再開: {resume} から重みを読み込み（前 epochs={prev_epochs}）")
     optimizer = optim.AdamW(model.parameters(), lr=lr)
 
+    has_density_head = cvae and use_film and hasattr(model, "density_head")
+
     for epoch in range(1, epochs + 1):
         model.train()
         total_loss = 0.0
         total_recon = 0.0
         total_kl = 0.0
+        total_aux = 0.0
         beta_t = kl_weight(epoch, beta=beta, anneal_epochs=kl_anneal_epochs)
         for inputs, targets in dataloader:
             inputs = inputs.to(device)
             targets = targets.to(device)
 
-            optimizer.zero_grad()
-            if cvae:
-                x_dec = apply_time_mask(inputs, mask_ratio) if mask_ratio > 0 else None
-                outputs, mu, logvar = model(inputs, targets, x_dec=x_dec)
-                recon = weighted_mse_loss(
-                    outputs, targets,
-                    pos_weight=pos_weight,
-                    onset_weight=onset_weight,
-                    midbar_onset_bonus=midbar_onset_bonus,
-                )
-                kl = kl_divergence(mu, logvar, free_bits=free_bits)
-                loss = recon + beta_t * kl
-                total_recon += recon.item()
-                total_kl += kl.item()
-            else:
-                outputs = model(inputs)
-                loss = weighted_mse_loss(
-                    outputs, targets,
-                    pos_weight=pos_weight,
-                    onset_weight=onset_weight,
-                    midbar_onset_bonus=midbar_onset_bonus,
-                )
-            loss.backward()
-            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+            with autocast(enabled=use_amp):
+                if cvae:
+                    x_dec = apply_time_mask(inputs, mask_ratio) if mask_ratio > 0 else None
+                    outputs, mu, logvar = model(inputs, targets, x_dec=x_dec)
+                    recon = weighted_mse_loss(
+                        outputs, targets,
+                        pos_weight=pos_weight,
+                        onset_weight=onset_weight,
+                        midbar_onset_bonus=midbar_onset_bonus,
+                    )
+                    kl = kl_divergence(mu, logvar, free_bits=free_bits)
+                    loss = recon + beta_t * kl
+                    total_recon += recon.item()
+                    total_kl += kl.item()
+
+                    # 補助損失: z（mu）からノート密度を予測させる
+                    # z が音楽的な変化量を符号化する動機を与える
+                    if has_density_head and aux_loss_weight > 0:
+                        density_pred = model.density_head(mu).squeeze(1)
+                        actual_density = (targets > 0).float().mean(dim=(1, 2, 3))
+                        aux = F.mse_loss(density_pred, actual_density)
+                        loss = loss + aux_loss_weight * aux
+                        total_aux += aux.item()
+                else:
+                    outputs = model(inputs)
+                    loss = weighted_mse_loss(
+                        outputs, targets,
+                        pos_weight=pos_weight,
+                        onset_weight=onset_weight,
+                        midbar_onset_bonus=midbar_onset_bonus,
+                    )
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             total_loss += loss.item()
 
         n = len(dataloader)
         avg_loss = total_loss / n
         if cvae:
+            aux_str = f"  aux={total_aux / n:.6f}" if has_density_head and aux_loss_weight > 0 else ""
             print(
                 f"epoch {epoch}/{epochs}  loss={avg_loss:.6f}  "
                 f"recon={total_recon / n:.6f}  kl={total_kl / n:.6f}  beta={beta_t:.3f}"
+                + aux_str
             )
         else:
             print(f"epoch {epoch}/{epochs}  loss={avg_loss:.6f}")
@@ -286,6 +313,16 @@ def main() -> None:
         help="全inputに*_power.npyを必須化（13ch lead学習用）",
     )
     parser.add_argument(
+        "--section-cond",
+        action="store_true",
+        help="section one-hot 7ch を連結（無いペアはゼロ、20ch lead用）",
+    )
+    parser.add_argument(
+        "--require-section-cond",
+        action="store_true",
+        help="全inputに*_section.npyを必須化",
+    )
+    parser.add_argument(
         "--cvae",
         action="store_true",
         help="確率的生成（条件付きVAE）で学習する。同じ入力から多様な出力を得る",
@@ -328,6 +365,15 @@ def main() -> None:
         action="store_true",
         help="FiLMCVAEUNet を使用する。z を全デコーダ層に注入して posterior collapse を防ぐ",
     )
+    parser.add_argument(
+        "--aux-loss-weight",
+        type=float,
+        default=0.1,
+        help=(
+            "補助損失（z → ノート密度予測）の重み。"
+            "0 で無効。0.1 程度で z への勾配経路を補強できる（FiLMCVAEUNet のみ有効）"
+        ),
+    )
     args = parser.parse_args()
 
     data_dir = args.data_dir
@@ -355,8 +401,11 @@ def main() -> None:
         kl_anneal_epochs=args.kl_anneal_epochs,
         free_bits=args.free_bits,
         require_power_cond=args.require_power_cond,
+        section_cond=args.section_cond,
+        require_section_cond=args.require_section_cond,
         mask_ratio=args.mask_ratio,
         use_film=args.use_film,
+        aux_loss_weight=args.aux_loss_weight,
     )
 
 

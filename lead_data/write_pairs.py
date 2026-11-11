@@ -30,8 +30,12 @@ def save_lead_pair_song(
     bpm: float,
     min_onsets: int = 1,
     zero_power_mask: bool = True,
+    section_id: int | None = None,
 ) -> int:
-    """1曲分を保存。保存パッチ数を返す。"""
+    """1曲分を保存。保存パッチ数を返す。
+
+    section_id を渡すと input 側に ``*_section.npy``（スカラー int）を書く。
+    """
     input_root = pairs_dir / "input" / song_id
     target_root = pairs_dir / "target" / song_id
     input_root.mkdir(parents=True, exist_ok=True)
@@ -56,5 +60,7 @@ def save_lead_pair_song(
                 input_root / f"{stem}_power.npy",
                 np.zeros((PATCH_TICKS, 128), dtype=np.uint8),
             )
+        if section_id is not None:
+            np.save(input_root / f"{stem}_section.npy", np.int32(section_id))
         saved += 1
     return saved

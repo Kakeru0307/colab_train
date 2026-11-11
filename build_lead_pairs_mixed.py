@@ -1,4 +1,4 @@
-"""SynthTab + GuitarSet + 合成 lead pairs を混合して data/pairs/lead を作る。
+"""SynthTab + 合成 lead pairs を混合して data/pairs/lead を作る。
 
 本決め:
   実データ 8〜9 割 / 合成 1〜2 割
@@ -15,7 +15,7 @@ import shutil
 from pathlib import Path
 
 from generate_lead_pairs import generate_lead_pairs
-from lead_data.import_guitarset import import_guitarset
+from lead_data.import_animetab import import_animetab
 from lead_data.import_synthtab import import_synthtab
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -32,15 +32,22 @@ def main() -> None:
     p = argparse.ArgumentParser(description="混合 lead pairs を構築")
     p.add_argument("--pairs-dir", type=Path, default=SCRIPT_DIR / "data" / "pairs" / "lead")
     p.add_argument("--synthtab-dir", type=Path, default=None, help="SynthTab MIDI ルート")
-    p.add_argument("--guitarset-dir", type=Path, default=None, help="GuitarSet JAMS ルート")
+    p.add_argument("--animetab-dir", type=Path, default=None, help="AnimeTAB Clips ルート")
+    p.add_argument(
+        "--synthtab-sectioned",
+        action="store_true",
+        help="SynthTab を SongFormer 区間ラベル付きで取り込む",
+    )
+    p.add_argument("--songformer-device", type=str, default="cuda:0")
+    p.add_argument("--songformer-cache-dir", type=Path, default=None)
     p.add_argument("--real-ratio", type=float, default=0.85, help="実パッチ目標比率 (0.8–0.9)")
     p.add_argument("--synth-count", type=int, default=None, help="合成曲数（省略時は実に合わせて自動）")
     p.add_argument("--synthtab-max-files", type=int, default=None)
-    p.add_argument("--guitarset-max-songs", type=int, default=None)
+    p.add_argument("--animetab-max-files", type=int, default=None)
     p.add_argument("--clear", action="store_true", help="先に pairs-dir を削除")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--skip-synthtab", action="store_true")
-    p.add_argument("--skip-guitarset", action="store_true")
+    p.add_argument("--skip-animetab", action="store_true")
     p.add_argument("--skip-synthetic", action="store_true")
     args = p.parse_args()
 
@@ -52,27 +59,39 @@ def main() -> None:
 
     manifest: dict = {"mode": "lead_mixed", "parts": {}, "real_ratio_target": args.real_ratio}
 
-    # --- real ---
-    if not args.skip_guitarset:
-        if args.guitarset_dir and args.guitarset_dir.is_dir():
-            print("=== GuitarSet ===")
-            st = import_guitarset(
-                args.guitarset_dir,
+    if not args.skip_animetab:
+        if args.animetab_dir and args.animetab_dir.is_dir():
+            print("=== AnimeTAB ===")
+            at = import_animetab(
+                args.animetab_dir,
                 pairs_dir,
-                max_songs=args.guitarset_max_songs,
+                max_files=args.animetab_max_files,
             )
-            manifest["parts"]["guitarset"] = st
+            manifest["parts"]["animetab"] = at
         else:
-            print("GuitarSet: dir なし → スキップ", args.guitarset_dir)
+            print("AnimeTAB: dir なし → スキップ", args.animetab_dir)
 
+    # --- real（SynthTab）---
     if not args.skip_synthtab:
         if args.synthtab_dir and args.synthtab_dir.is_dir():
-            print("=== SynthTab ===")
-            st = import_synthtab(
-                args.synthtab_dir,
-                pairs_dir,
-                max_files=args.synthtab_max_files,
-            )
+            if args.synthtab_sectioned:
+                print("=== SynthTab + SongFormer sections ===")
+                from lead_data.label_synthtab_sections import import_synthtab_with_sections
+
+                st = import_synthtab_with_sections(
+                    args.synthtab_dir,
+                    pairs_dir,
+                    device=args.songformer_device,
+                    max_files=args.synthtab_max_files,
+                    cache_dir=args.songformer_cache_dir,
+                )
+            else:
+                print("=== SynthTab ===")
+                st = import_synthtab(
+                    args.synthtab_dir,
+                    pairs_dir,
+                    max_files=args.synthtab_max_files,
+                )
             manifest["parts"]["synthtab"] = st
         else:
             print("SynthTab: dir なし → スキップ", args.synthtab_dir)
@@ -90,10 +109,8 @@ def main() -> None:
             print("実パッチ 0 → 合成のみ仮に", synth_songs, "曲")
         else:
             # real / (real+synth) ≈ ratio  → synth ≈ real * (1-ratio)/ratio
-            # 1 song ≈ 1 patch (8 bars) for synthetic
             synth_songs = max(1, int(round(real_patches * (1.0 - ratio) / ratio)))
         print(f"=== synthetic ({synth_songs} songs) ===")
-        # write into temp then merge — generate_lead_pairs writes song ids lead#####
         st = generate_lead_pairs(pairs_dir, count=synth_songs, seed=args.seed)
         manifest["parts"]["synthetic"] = {
             "songs": len(st.get("songs", [])),
