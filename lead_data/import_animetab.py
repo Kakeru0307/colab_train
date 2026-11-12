@@ -20,6 +20,7 @@ from lead_data.midi_windows import (
     slice_notes_window,
     total_bars_from_notes,
 )
+from lead_data.quality import DEFAULT_MIN_ONSETS, sharpen_lead_notes
 from lead_data.skeleton import build_skeleton_from_bar_chords
 from lead_data.write_pairs import save_lead_pair_song
 from makeData.constants import DEFAULT_BARS
@@ -64,8 +65,9 @@ def import_animetab(
     max_files: int | None = None,
     window_bars: int = DEFAULT_BARS,
     stride_bars: int = 8,
-    min_onsets: int = 1,
+    min_onsets: int = DEFAULT_MIN_ONSETS,
     min_notes: int = 4,
+    sharpen: bool = True,
 ) -> dict:
     files = _iter_clip_xml(clips_dir)
     stats = {
@@ -116,6 +118,8 @@ def import_animetab(
             iter_bar_windows(n_bars, window=window_bars, stride=stride_bars)
         ):
             win = slice_notes_window(notes, start_bar=start_bar, bars=window_bars)
+            if sharpen:
+                win = sharpen_lead_notes(win)
             if len(win) < min_onsets:
                 continue
             key = estimate_key_from_notes(win)

@@ -21,13 +21,14 @@ from pathlib import Path
 import muspy
 import numpy as np
 
+from lead_data.quality import DEFAULT_MIN_ONSETS, LeadQualityParams, is_clear_lead_patch
 from makeData.constants import BPM_RANGE, DEFAULT_BARS, KEYS
 from makeData.patterns import (
     choose_progression,
     generate_progression_lead,
     sample_backing_power_chord_onsets,
 )
-from util.midi_to_patch import PATCH_TICKS, TICKS_PER_BAR, MidiPatch, midi_to_patches
+from util.midi_to_patch import PATCH_TICKS, TICKS_PER_BAR, midi_to_patches
 from util.progression_input import build_backing_skeleton_music
 from util.density_cond import bpm_to_unit
 
@@ -37,10 +38,6 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 def _music_to_patches(music: muspy.Music, tmp_midi: Path) -> list[MidiPatch]:
     muspy.write_midi(tmp_midi, music)
     return midi_to_patches(tmp_midi)
-
-
-def _has_onsets(patch: MidiPatch, min_onsets: int) -> bool:
-    return int((patch.tonal_chw == 1).sum()) >= min_onsets
 
 
 def _power_mask_for_patch(
@@ -64,7 +61,7 @@ def generate_lead_pairs(
     count: int,
     seed: int = 42,
     bars: int = DEFAULT_BARS,
-    min_onsets: int = 1,
+    min_onsets: int = DEFAULT_MIN_ONSETS,
 ) -> dict:
     input_root = pairs_dir / "input"
     target_root = pairs_dir / "target"
@@ -89,6 +86,7 @@ def generate_lead_pairs(
             target_music = generate_progression_lead(
                 spec=spec, key=key, bpm=bpm, bars=bars,
                 bars_per_chord=bars_per_chord, rng=rng,
+                rest_prob=0.18,
                 blocked_power_onsets=blocked_power_onsets,
             )
             input_music = build_backing_skeleton_music(
@@ -106,9 +104,10 @@ def generate_lead_pairs(
             in_dir.mkdir(parents=True, exist_ok=True)
             tg_dir.mkdir(parents=True, exist_ok=True)
 
+            quality = LeadQualityParams(min_onsets=min_onsets)
             saved = 0
             for inp, tgt in zip(inp_patches, tgt_patches):
-                if not _has_onsets(tgt, min_onsets):
+                if not is_clear_lead_patch(tgt, quality):
                     continue
                 stem = f"bar{tgt.bar_index:04d}"
                 np.save(in_dir / f"{stem}_tonal.npy", inp.tonal_chw.astype(np.uint8, copy=False))
@@ -148,7 +147,7 @@ def main() -> None:
     parser.add_argument("--count", type=int, default=6000, help="生成する曲数")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--bars", type=int, default=DEFAULT_BARS)
-    parser.add_argument("--min-onsets", type=int, default=1)
+    parser.add_argument("--min-onsets", type=int, default=DEFAULT_MIN_ONSETS)
     args = parser.parse_args()
 
     generate_lead_pairs(

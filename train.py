@@ -127,11 +127,18 @@ def train(
     mask_ratio: float = 0.0,
     use_film: bool = False,
     aux_loss_weight: float = 0.0,
+    use_amp: bool = False,
 ) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    use_amp = device.type == "cuda"
+    # FiLM/AdaIN + AMP(fp16) は重みが NaN 化しやすい。既定は OFF。
+    if use_amp and device.type != "cuda":
+        print("警告: --amp は CUDA 以外では無効化します")
+        use_amp = False
     if use_amp:
         torch.backends.cudnn.benchmark = True
+        print("AMP: ON（AdaIN/FiLM では NaN リスクあり）")
+    else:
+        print("AMP: OFF（fp32）")
     scaler = GradScaler(enabled=use_amp)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     input_dir, target_dir = resolve_pair_dirs(data_dir, pairs_dir)
@@ -171,7 +178,18 @@ def train(
         ).to(device)
     if resume is not None:
         checkpoint = torch.load(resume, map_location=device, weights_only=False)
-        model.load_state_dict(checkpoint["model_state_dict"])
+        state = checkpoint["model_state_dict"]
+        nan_tensors = sum(
+            1
+            for v in state.values()
+            if torch.is_tensor(v) and bool(torch.isnan(v.float()).any())
+        )
+        if nan_tensors:
+            raise ValueError(
+                f"resume 先に NaN 重みが含まれます（{nan_tensors} tensors）: {resume}\n"
+                "壊れた ckpt から継続しても直りません。--resume なしで新規学習してください。"
+            )
+        model.load_state_dict(state)
         prev_epochs = checkpoint.get("epochs", "?")
         print(f"再開: {resume} から重みを読み込み（前 epochs={prev_epochs}）")
     optimizer = optim.AdamW(model.parameters(), lr=lr)
@@ -374,6 +392,11 @@ def main() -> None:
             "0 で無効。0.1 程度で z への勾配経路を補強できる（FiLMCVAEUNet のみ有効）"
         ),
     )
+    parser.add_argument(
+        "--amp",
+        action="store_true",
+        help="CUDA AMP(fp16) を使う。AdaIN/FiLM では NaN 化しやすいので既定 OFF",
+    )
     args = parser.parse_args()
 
     data_dir = args.data_dir
@@ -406,6 +429,7 @@ def main() -> None:
         mask_ratio=args.mask_ratio,
         use_film=args.use_film,
         aux_loss_weight=args.aux_loss_weight,
+        use_amp=args.amp,
     )
 
 

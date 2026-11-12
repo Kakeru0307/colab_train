@@ -29,6 +29,7 @@ from lead_data.midi_windows import (
     slice_notes_window,
     total_bars_from_notes,
 )
+from lead_data.quality import DEFAULT_MIN_ONSETS, sharpen_lead_notes
 from lead_data.skeleton import build_skeleton_from_bar_chords
 from lead_data.write_pairs import save_lead_pair_song
 from makeData.constants import DEFAULT_BARS
@@ -371,10 +372,11 @@ def import_synthtab_with_sections(
     max_files: int | None = None,
     window_bars: int = DEFAULT_BARS,
     stride_bars: int = 8,
-    min_onsets: int = 1,
+    min_onsets: int = DEFAULT_MIN_ONSETS,
     min_notes: int = 4,
     min_bars: int = 32,
     cache_dir: Path | None = None,
+    sharpen: bool = True,
 ) -> dict:
     """SongFormer ラベル付きで SynthTab を取り込む。"""
     files = _iter_midi_files(midi_root)
@@ -448,6 +450,8 @@ def import_synthtab_with_sections(
             iter_bar_windows(n_bars, window=window_bars, stride=stride_bars)
         ):
             win = slice_notes_window(notes, start_bar=start_bar, bars=window_bars)
+            if sharpen:
+                win = sharpen_lead_notes(win)
             if len(win) < min_onsets:
                 continue
             role = majority_role_for_window(

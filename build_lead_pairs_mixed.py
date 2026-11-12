@@ -2,9 +2,12 @@
 
 本決め:
   実データ 8〜9 割 / 合成 1〜2 割
-  SynthTab は伴奏っぽいものも残す
+  SynthTab は伴奏っぽいものも残す（ただし発音が曖昧な窓は品質ゲートで落とす）
   実データの power mask はゼロ
   旧 pairs は上書き前に消してよい
+
+品質（lead_data.quality）:
+  同ピッチ重なり切断・長音キャップ、min_onsets=4、onset比率・べた塗り拒否
 """
 
 from __future__ import annotations

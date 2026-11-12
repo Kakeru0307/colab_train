@@ -26,6 +26,7 @@ from lead_data.midi_windows import (
     slice_notes_window,
     total_bars_from_notes,
 )
+from lead_data.quality import DEFAULT_MIN_ONSETS, sharpen_lead_notes
 from lead_data.skeleton import build_skeleton_from_bar_chords
 from lead_data.write_pairs import save_lead_pair_song
 from makeData.constants import DEFAULT_BARS
@@ -61,16 +62,18 @@ def import_synthtab(
     max_files: int | None = None,
     window_bars: int = DEFAULT_BARS,
     stride_bars: int = 8,
-    min_onsets: int = 1,
+    min_onsets: int = DEFAULT_MIN_ONSETS,
     min_notes: int = 4,
     min_bars: int = 32,
     exclude_keywords: tuple[str, ...] = _DEFAULT_EXCLUDE_KEYWORDS,
+    sharpen: bool = True,
 ) -> dict:
     """曲の流れを持つ長尺トラックのみ使用する。
 
     min_bars: この小節数未満のトラックはスキップ（デフォルト 32）。
     exclude_keywords: ファイル名にこれらが含まれる場合は除外。
     空タプル () を渡すとキーワードフィルタを無効にできる。
+    sharpen: 同ピッチ重なり切断＋長音キャップで発音境界をはっきりさせる。
     """
     files = _iter_midi_files(midi_root)
     stats = {
@@ -80,6 +83,7 @@ def import_synthtab(
         "files": 0,
         "skipped_short": 0,
         "skipped_keyword": 0,
+        "skipped_quality": 0,
     }
     pairs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -120,7 +124,10 @@ def import_synthtab(
         song_patches = 0
         for wi, start_bar in enumerate(iter_bar_windows(n_bars, window=window_bars, stride=stride_bars)):
             win = slice_notes_window(notes, start_bar=start_bar, bars=window_bars)
+            if sharpen:
+                win = sharpen_lead_notes(win)
             if len(win) < min_onsets:
+                stats["skipped_quality"] += 1
                 continue
             key = estimate_key_from_notes(win)
             chords = estimate_chords_per_bar(win, bars=window_bars, key=key)
@@ -140,6 +147,8 @@ def import_synthtab(
                 min_onsets=min_onsets,
                 zero_power_mask=True,
             )
+            if n == 0:
+                stats["skipped_quality"] += 1
             song_patches += n
 
         if song_patches > 0:
@@ -152,6 +161,7 @@ def import_synthtab(
 
     print(
         f"[synthtab] done  files={stats['files']}  patches={stats['total_patches']}  "
-        f"skipped_short={stats['skipped_short']}  skipped_keyword={stats['skipped_keyword']}"
+        f"skipped_short={stats['skipped_short']}  skipped_keyword={stats['skipped_keyword']}  "
+        f"skipped_quality={stats['skipped_quality']}"
     )
     return stats
