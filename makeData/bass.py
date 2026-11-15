@@ -1,4 +1,7 @@
-"""ベースライン合成（コードルート中心・energy で密度変化）。"""
+"""ベースライン合成（コードルート中心・energy で密度変化）。
+
+発音グリッドと音価はすべて 4tick（四分）。8分以下の教師は作らない。
+"""
 
 from __future__ import annotations
 
@@ -108,7 +111,11 @@ def _add_kick_aligned_roots(
         if any(n.time == t for n in track.notes):
             continue
         root = root_in_bass_range(roots[bar])
-        add_note(track, time=t, pitch=root, duration=2, velocity=vel)
+        # ベース教師はすべて 4tick（四分）グリッド
+        t4 = (int(t) // BEAT_TICKS) * BEAT_TICKS
+        if any(n.time == t4 for n in track.notes):
+            continue
+        add_note(track, time=t4, pitch=root, duration=BEAT_TICKS, velocity=vel)
 
 
 def generate_bass_line(
@@ -140,34 +147,32 @@ def generate_bass_line(
         fifth = fifth_in_bass_range(root)
         next_root = root_in_bass_range(next_roots[bar])
 
+        # 発音・音価はすべて 4tick（四分）。8分以下は作らない。
         if energy == "low":
-            # 全音符相当（小節頭のみ）
-            add_note(track, time=bar_t, pitch=root, duration=TICKS_PER_BAR - 1, velocity=vel)
+            # 小節頭ルートのみ
+            add_note(track, time=bar_t, pitch=root, duration=BEAT_TICKS, velocity=vel)
             continue
 
         if energy == "mid":
-            # BPM 依存: 遅→2分、速→4分。root / fifth 交互
+            # 遅→2拍に1回、速→毎拍。root / fifth
             if bpm < 90:
                 onsets = (0, 2 * BEAT_TICKS)
-                durs = (2 * BEAT_TICKS - 1, 2 * BEAT_TICKS - 1)
                 pitches = (root, fifth)
             else:
                 onsets = (0, BEAT_TICKS, 2 * BEAT_TICKS, 3 * BEAT_TICKS)
-                durs = (BEAT_TICKS - 1,) * 4
                 pitches = (root, root, fifth, fifth)
-            for onset, dur, pitch in zip(onsets, durs, pitches):
+            for onset, pitch in zip(onsets, pitches):
                 add_note(
                     track,
                     time=bar_t + onset,
                     pitch=pitch,
-                    duration=dur,
+                    duration=BEAT_TICKS,
                     velocity=vel,
                 )
             continue
 
-        # high: 8分駆動 or ウォーキング
-        if rng.random() < 0.45:
-            # walking: 4分 × 4、末拍は半音アプローチ
+        # high: 毎拍。多くは root/fifth、たまに短いメロディ（経過・アプローチ）
+        if rng.random() < 0.35:
             scale_pcs = _scale_pitch_classes(mode, key)
             mid_pc = scale_pcs[rng.randint(0, len(scale_pcs) - 1)]
             mid = mid_pc + (root // 12) * 12
@@ -177,28 +182,16 @@ def generate_bass_line(
                 mid -= 12
             approach = _approach_pitch(next_root, rng)
             pitches = (root, fifth, mid, approach)
-            for i, pitch in enumerate(pitches):
-                add_note(
-                    track,
-                    time=bar_t + i * BEAT_TICKS,
-                    pitch=pitch,
-                    duration=BEAT_TICKS - 1,
-                    velocity=vel,
-                )
         else:
-            # driving 8ths: root-fifth-octave-fifth 繰り返し
-            octave = root + 12
-            if octave > BASS_PITCH_MAX:
-                octave = root
-            pattern = (root, fifth, octave, fifth)
-            for i in range(8):
-                add_note(
-                    track,
-                    time=bar_t + i * 2,
-                    pitch=pattern[i % 4],
-                    duration=1,
-                    velocity=vel,
-                )
+            pitches = (root, root, fifth, fifth)
+        for i, pitch in enumerate(pitches):
+            add_note(
+                track,
+                time=bar_t + i * BEAT_TICKS,
+                pitch=pitch,
+                duration=BEAT_TICKS,
+                velocity=vel,
+            )
 
     _add_kick_aligned_roots(
         track,

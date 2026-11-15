@@ -46,6 +46,17 @@ def main() -> None:
     p.add_argument("--real-ratio", type=float, default=0.85, help="実パッチ目標比率 (0.8–0.9)")
     p.add_argument("--synth-count", type=int, default=None, help="合成曲数（省略時は実に合わせて自動）")
     p.add_argument("--synthtab-max-files", type=int, default=None)
+    p.add_argument(
+        "--synthtab-min-bars",
+        type=int,
+        default=32,
+        help="SynthTab 取り込みの最小小節数（選別済み短尺ソロは 8 推奨）",
+    )
+    p.add_argument(
+        "--synthtab-no-keyword-filter",
+        action="store_true",
+        help="ファイル名キーワード除外を無効化（選別済み zip 向け）",
+    )
     p.add_argument("--animetab-max-files", type=int, default=None)
     p.add_argument("--clear", action="store_true", help="先に pairs-dir を削除")
     p.add_argument("--seed", type=int, default=42)
@@ -90,11 +101,13 @@ def main() -> None:
                 )
             else:
                 print("=== SynthTab ===")
-                st = import_synthtab(
-                    args.synthtab_dir,
-                    pairs_dir,
-                    max_files=args.synthtab_max_files,
-                )
+                st_kw: dict = {
+                    "max_files": args.synthtab_max_files,
+                    "min_bars": args.synthtab_min_bars,
+                }
+                if args.synthtab_no_keyword_filter:
+                    st_kw["exclude_keywords"] = ()
+                st = import_synthtab(args.synthtab_dir, pairs_dir, **st_kw)
             manifest["parts"]["synthtab"] = st
         else:
             print("SynthTab: dir なし → スキップ", args.synthtab_dir)
