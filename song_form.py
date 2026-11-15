@@ -116,7 +116,7 @@ ENERGY_DECODE_PARAMS: dict[EnergyLevel, dict[str, float | int]] = {
         "release_gap_ticks": 2,
         "lead_onset_th": 0.40,
         "lead_sustain_th": 0.75,
-        "bass_onset_th": 0.35,
+        "bass_onset_th": 0.42,
         "drum_onset_th": 0.40,
     },
     "mid": {
@@ -125,7 +125,7 @@ ENERGY_DECODE_PARAMS: dict[EnergyLevel, dict[str, float | int]] = {
         "release_gap_ticks": 1,
         "lead_onset_th": 0.36,
         "lead_sustain_th": 0.72,
-        "bass_onset_th": 0.30,
+        "bass_onset_th": 0.38,
         "drum_onset_th": 0.35,
     },
     "high": {
@@ -134,7 +134,7 @@ ENERGY_DECODE_PARAMS: dict[EnergyLevel, dict[str, float | int]] = {
         "release_gap_ticks": 1,
         "lead_onset_th": 0.30,
         "lead_sustain_th": 0.68,
-        "bass_onset_th": 0.25,
+        "bass_onset_th": 0.34,
         "drum_onset_th": 0.30,
     },
 }
