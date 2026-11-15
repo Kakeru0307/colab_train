@@ -1,17 +1,14 @@
-"""Build apply dataset: EG-Solo + Guitar-TECHS + friend MIDI + sparse synthetic fill."""
+"""Build apply dataset: EG-Solo + Guitar-TECHS + friend MIDI."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import random
 from collections import Counter
 from pathlib import Path
 
-from .carriers import generate_carrier, notes_to_midi
 from .constants import (
     APPLY_DATASET_DIR,
-    DEFAULT_PROGRAM,
     EGSOLO_ROOT,
     GUITAR_TECHS_ROOT,
     TECH_ROOT,
@@ -19,91 +16,11 @@ from .constants import (
 from .import_egsolo_tech import import_egsolo
 from .import_friend_guitar import import_friend_guitar
 from .import_guitar_techs import import_guitar_techs
-from .params import TECH_NAMES
-from .render import assign_techs, labels_to_jsonable, render_target
-
-
-def _append_synthetic(
-    out_dir: Path,
-    *,
-    n_carriers: int,
-    applies_per_carrier: int,
-    seed: int,
-) -> dict:
-    rng = random.Random(seed)
-    carrier_dir = out_dir / "carrier"
-    target_dir = out_dir / "target"
-    labels_dir = out_dir / "labels"
-    for d in (carrier_dir, target_dir, labels_dir):
-        d.mkdir(parents=True, exist_ok=True)
-
-    tech_note_counts: Counter[str] = Counter()
-    n_notes_total = 0
-    n_pairs = 0
-    mf_path = out_dir / "manifest_synth.jsonl"
-    with mf_path.open("w", encoding="utf-8") as mf:
-        for c_i in range(n_carriers):
-            notes, _ = generate_carrier(rng, program=DEFAULT_PROGRAM)
-            carrier_name = f"synth_c{c_i:05d}.mid"
-            notes_to_midi(notes, program=DEFAULT_PROGRAM).write(
-                str(carrier_dir / carrier_name)
-            )
-            for a_i in range(applies_per_carrier):
-                pair_id = f"synth_{c_i:05d}_{a_i:02d}"
-                labels = assign_techs(notes, rng)
-                target = render_target(notes, labels, program=DEFAULT_PROGRAM, rng=rng)
-                target.write(str(target_dir / f"{pair_id}.mid"))
-                for lb in labels:
-                    tech_note_counts[lb.tech] += 1
-                    n_notes_total += 1
-                (labels_dir / f"{pair_id}.json").write_text(
-                    json.dumps(
-                        {
-                            "id": pair_id,
-                            "source": "synth",
-                            "notes": [
-                                {
-                                    "pitch": n.pitch,
-                                    "start": round(n.start, 5),
-                                    "end": round(n.end, 5),
-                                    "velocity": n.velocity,
-                                }
-                                for n in notes
-                            ],
-                            "labels": labels_to_jsonable(labels),
-                            "tech_names": list(TECH_NAMES),
-                        },
-                        ensure_ascii=False,
-                    ),
-                    encoding="utf-8",
-                )
-                mf.write(
-                    json.dumps(
-                        {
-                            "id": pair_id,
-                            "carrier": f"carrier/{carrier_name}",
-                            "labels": f"labels/{pair_id}.json",
-                            "source": "synth",
-                            "n_notes": len(notes),
-                        },
-                        ensure_ascii=False,
-                    )
-                    + "\n"
-                )
-                n_pairs += 1
-    return {
-        "n_pairs": n_pairs,
-        "n_note_labels": n_notes_total,
-        "tech_note_counts": dict(tech_note_counts),
-    }
 
 
 def build(
     *,
     out_dir: Path = APPLY_DATASET_DIR,
-    n_synth_carriers: int = 200,
-    applies_per_carrier: int = 2,
-    seed: int = 0,
     skip_egsolo: bool = False,
     skip_techs: bool = False,
     skip_friend: bool = False,
@@ -133,15 +50,6 @@ def build(
         except Exception as exc:
             print(f"friend import skipped: {exc}")
 
-    summaries["synth"] = _append_synthetic(
-        out_dir,
-        n_carriers=n_synth_carriers,
-        applies_per_carrier=applies_per_carrier,
-        seed=seed,
-    )
-    print("synth", summaries["synth"])
-
-    # aggregate
     total_notes = 0
     tech_counts: Counter[str] = Counter()
     n_pairs = 0
@@ -156,7 +64,6 @@ def build(
         "normal_ratio": (normal_n / total_notes) if total_notes else 0.0,
         "tech_note_counts": dict(tech_counts),
         "sources": summaries,
-        "seed": seed,
     }
     (out_dir / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -164,24 +71,24 @@ def build(
     print(
         f"wrote {out_dir}: pairs={n_pairs} normal_ratio={summary['normal_ratio']:.2f}"
     )
+    if n_pairs == 0:
+        raise RuntimeError(
+            f"{out_dir}: pairs=0（EG-Solo / Guitar-TECHS / 依頼ギターのいずれも取り込めなかった）"
+        )
     return out_dir
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build guitar tech apply dataset")
+    parser = argparse.ArgumentParser(
+        description="Build guitar tech apply dataset (EG-Solo + TECHS + friend only)"
+    )
     parser.add_argument("--out-dir", type=Path, default=APPLY_DATASET_DIR)
-    parser.add_argument("--n-synth-carriers", type=int, default=200)
-    parser.add_argument("--applies-per-carrier", type=int, default=2)
-    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--skip-egsolo", action="store_true")
     parser.add_argument("--skip-techs", action="store_true")
     parser.add_argument("--skip-friend", action="store_true")
     args = parser.parse_args()
     build(
         out_dir=args.out_dir,
-        n_synth_carriers=args.n_synth_carriers,
-        applies_per_carrier=args.applies_per_carrier,
-        seed=args.seed,
         skip_egsolo=args.skip_egsolo,
         skip_techs=args.skip_techs,
         skip_friend=args.skip_friend,
