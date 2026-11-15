@@ -18,9 +18,12 @@ from util.midi_to_patch import MidiPatch, NUM_CATEGORIES
 DEFAULT_MAX_NOTE_DURATION_TICKS = 16  # 全音符相当
 DEFAULT_MIN_ONSETS = 4
 DEFAULT_MIN_ONSET_RATIO = 0.12  # onsetセル / 活性セル
-DEFAULT_MAX_FILL = 0.85  # 時間×音高の占有率上限（べた塗り拒否）
+DEFAULT_MAX_FILL = 0.70  # 時間×音高の占有率上限（べた塗り拒否・厳しめ）
 DEFAULT_MIN_FILL = 0.001  # 下限（ほぼ無音拒否）
 DEFAULT_MIN_ACTIVE_TICKS = 8  # 何か鳴っている tick 数の下限
+# 8小節パッチ想定: 小節あたり上限 × 小節数
+DEFAULT_MAX_ONSETS_PER_BAR = 10
+DEFAULT_PATCH_BARS = 8
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,8 @@ class LeadQualityParams:
     max_fill: float = DEFAULT_MAX_FILL
     min_fill: float = DEFAULT_MIN_FILL
     min_active_ticks: int = DEFAULT_MIN_ACTIVE_TICKS
+    max_onsets_per_bar: int = DEFAULT_MAX_ONSETS_PER_BAR
+    patch_bars: int = DEFAULT_PATCH_BARS
 
 
 def sharpen_lead_notes(
@@ -108,5 +113,8 @@ def is_clear_lead_patch(
         return False
     onset_ratio = float(onset) / float(active)
     if onset_ratio < float(p.min_onset_ratio):
+        return False
+    max_onsets = int(p.max_onsets_per_bar) * max(1, int(p.patch_bars))
+    if onset > max_onsets:
         return False
     return True
