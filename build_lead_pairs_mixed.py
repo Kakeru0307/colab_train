@@ -1,13 +1,9 @@
-"""SynthTab + 合成 lead pairs を混合して data/pairs/lead を作る。
+"""SynthTab + GAPS(+任意 AnimeTAB) + 合成 lead pairs を混合して data/pairs/lead を作る。
 
 本決め:
-  実データ 8〜9 割 / 合成 1〜2 割
-  SynthTab は伴奏っぽいものも残す（ただし発音が曖昧な窓は品質ゲートで落とす）
+  実データ中心。合成は --skip-synthetic で省略可
+  GAPS は arp 高スコア寄り選別後、実効 5–8%（上限 10%）へ必要なら複製
   実データの power mask はゼロ
-  旧 pairs は上書き前に消してよい
-
-品質（lead_data.quality）:
-  同ピッチ重なり切断・長音キャップ、min_onsets=4、onset比率・べた塗り拒否
 """
 
 from __future__ import annotations
@@ -19,7 +15,10 @@ from pathlib import Path
 
 from generate_lead_pairs import generate_lead_pairs
 from lead_data.import_animetab import import_animetab
+from lead_data.import_gaps import SONG_ID_PREFIX as GAPS_PREFIX
+from lead_data.import_gaps import import_gaps
 from lead_data.import_synthtab import import_synthtab
+from lead_data.oversample_pairs import oversample_prefix
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -36,6 +35,7 @@ def main() -> None:
     p.add_argument("--pairs-dir", type=Path, default=SCRIPT_DIR / "data" / "pairs" / "lead")
     p.add_argument("--synthtab-dir", type=Path, default=None, help="SynthTab MIDI ルート")
     p.add_argument("--animetab-dir", type=Path, default=None, help="AnimeTAB Clips ルート")
+    p.add_argument("--gaps-dir", type=Path, default=None, help="GAPS MIDI ルート")
     p.add_argument(
         "--synthtab-sectioned",
         action="store_true",
@@ -58,10 +58,29 @@ def main() -> None:
         help="ファイル名キーワード除外を無効化（選別済み zip 向け）",
     )
     p.add_argument("--animetab-max-files", type=int, default=None)
+    p.add_argument("--gaps-top-k", type=int, default=100, help="GAPS arp スコア上位何本を使うか")
+    p.add_argument("--gaps-min-score", type=float, default=None)
+    p.add_argument(
+        "--gaps-pick-tsv",
+        type=Path,
+        default=None,
+        help="選別結果 TSV（省略時 lead_data/gaps_pick_topk.tsv）",
+    )
+    p.add_argument("--gaps-min-bars", type=int, default=8)
+    p.add_argument(
+        "--gaps-target-ratio",
+        type=float,
+        default=0.06,
+        help="GAPS 実効パッチ目標比率（min 未満なら複製）",
+    )
+    p.add_argument("--gaps-min-ratio", type=float, default=0.05)
+    p.add_argument("--gaps-max-ratio", type=float, default=0.10)
+    p.add_argument("--skip-gaps-oversample", action="store_true")
     p.add_argument("--clear", action="store_true", help="先に pairs-dir を削除")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--skip-synthtab", action="store_true")
     p.add_argument("--skip-animetab", action="store_true")
+    p.add_argument("--skip-gaps", action="store_true")
     p.add_argument("--skip-synthetic", action="store_true")
     args = p.parse_args()
 
@@ -111,6 +130,39 @@ def main() -> None:
             manifest["parts"]["synthtab"] = st
         else:
             print("SynthTab: dir なし → スキップ", args.synthtab_dir)
+
+    # --- GAPS（arp 選別）---
+    if not args.skip_gaps:
+        if args.gaps_dir and args.gaps_dir.is_dir():
+            print("=== GAPS ===")
+            pick_tsv = args.gaps_pick_tsv
+            if pick_tsv is None:
+                pick_tsv = SCRIPT_DIR / "lead_data" / "gaps_pick_topk.tsv"
+            gp = import_gaps(
+                args.gaps_dir,
+                pairs_dir,
+                top_k=args.gaps_top_k,
+                min_score=args.gaps_min_score,
+                pick_tsv=pick_tsv,
+                min_bars=args.gaps_min_bars,
+            )
+            manifest["parts"]["gaps"] = {
+                k: v for k, v in gp.items() if k != "song_ids"
+            }
+            manifest["parts"]["gaps"]["pick_tsv"] = str(pick_tsv)
+
+            if not args.skip_gaps_oversample:
+                print("=== GAPS oversample ===")
+                os_stats = oversample_prefix(
+                    pairs_dir,
+                    prefix=GAPS_PREFIX,
+                    min_ratio=args.gaps_min_ratio,
+                    target_ratio=args.gaps_target_ratio,
+                    max_ratio=args.gaps_max_ratio,
+                )
+                manifest["parts"]["gaps_oversample"] = os_stats
+        else:
+            print("GAPS: dir なし → スキップ", args.gaps_dir)
 
     real_patches = _count_patches(pairs_dir)
     print(f"real patches so far: {real_patches}")
