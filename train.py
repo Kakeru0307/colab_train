@@ -128,6 +128,7 @@ def train(
     use_film: bool = False,
     aux_loss_weight: float = 0.0,
     use_amp: bool = False,
+    cache_dataset: bool = False,
 ) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # FiLM/AdaIN + AMP(fp16) は重みが NaN 化しやすい。既定は OFF。
@@ -155,6 +156,7 @@ def train(
             require_power_cond=require_power_cond,
             section_cond=section_cond,
             require_section_cond=require_section_cond,
+            cache=cache_dataset,
         )
     print(f"学習パッチ数: {len(dataset)}")
     sample_input, _ = dataset[0]
@@ -397,6 +399,16 @@ def main() -> None:
         action="store_true",
         help="CUDA AMP(fp16) を使う。AdaIN/FiLM では NaN 化しやすいので既定 OFF",
     )
+    parser.add_argument(
+        "--cache-dataset",
+        action="store_true",
+        help="全パッチを起動時に RAM へ載せる（大規模 pairs では Colab 切断の原因になりやすい）",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="互換用。既定で cache OFF。指定時も cache OFF（明示）",
+    )
     args = parser.parse_args()
 
     data_dir = args.data_dir
@@ -430,6 +442,7 @@ def main() -> None:
         use_film=args.use_film,
         aux_loss_weight=args.aux_loss_weight,
         use_amp=args.amp,
+        cache_dataset=bool(args.cache_dataset) and not bool(args.no_cache),
     )
 
 
