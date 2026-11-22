@@ -18,8 +18,8 @@ class PatchPairDataset(Dataset):
     同階層の ``*_cond.npy`` に正規化 BPM（スカラーまたは (1,H,W)）を置く。
     無い場合は中立 0.5（旧ペア互換・非推奨）。
 
-    cache=True（デフォルト）のとき、初回に全件をメモリに展開する。
-    データセットが GPU メモリに乗らない場合でも CPU RAM に乗れば有効。
+    cache=False（デフォルト）。True のとき初回に全件を RAM 展開する。
+    数万件規模では起動時の無言ロードが長く、Colab が Interrupt しやすいので既定 OFF。
     """
 
     def __init__(
@@ -30,7 +30,7 @@ class PatchPairDataset(Dataset):
         require_power_cond: bool = False,
         section_cond: bool = False,
         require_section_cond: bool = False,
-        cache: bool = True,
+        cache: bool = False,
     ):
         self.input_dir = Path(input_dir)
         self.target_dir = Path(target_dir) if target_dir else self.input_dir
@@ -43,9 +43,21 @@ class PatchPairDataset(Dataset):
 
         self._cache: list[tuple[torch.Tensor, torch.Tensor]] | None = None
         if cache:
-            print(f"[dataset] キャッシュ構築中 ({len(self.files)} 件)…")
-            self._cache = [self._load(i) for i in range(len(self.files))]
-            print("[dataset] キャッシュ完了")
+            n = len(self.files)
+            print(f"[dataset] キャッシュ構築中 ({n} 件)…", flush=True)
+            cached: list[tuple[torch.Tensor, torch.Tensor]] = []
+            step = max(1, n // 20)
+            for i in range(n):
+                cached.append(self._load(i))
+                if (i + 1) % step == 0 or (i + 1) == n:
+                    print(f"[dataset] cache {i + 1}/{n}", flush=True)
+            self._cache = cached
+            print("[dataset] キャッシュ完了", flush=True)
+        else:
+            print(
+                f"[dataset] cache=OFF（都度ロード） files={len(self.files)}",
+                flush=True,
+            )
 
     def __len__(self) -> int:
         return len(self.files)
