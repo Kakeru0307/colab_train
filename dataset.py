@@ -1,4 +1,4 @@
-"""パッチ Dataset（通常: tonal11+BPM1、lead: さらにpower attack mask1）。"""
+"""パッチ Dataset（通常: tonal11+BPM1、backing: +groove8、lead: +power+section）。"""
 
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ class PatchPairDataset(Dataset):
 
     同階層の ``*_cond.npy`` に正規化 BPM（スカラーまたは (1,H,W)）を置く。
     無い場合は中立 0.5（旧ペア互換・非推奨）。
+    backing: ``*_groove.npy``（型 ID）→ one-hot 8ch。
+    lead: ``*_power.npy`` / ``*_section.npy``。
 
     cache=False（デフォルト）。True のとき初回に全件を RAM 展開する。
     数万件規模では起動時の無言ロードが長く、Colab が Interrupt しやすいので既定 OFF。
@@ -30,6 +32,7 @@ class PatchPairDataset(Dataset):
         require_power_cond: bool = False,
         section_cond: bool = False,
         require_section_cond: bool = False,
+        require_groove_cond: bool = False,
         cache: bool = False,
     ):
         self.input_dir = Path(input_dir)
@@ -37,6 +40,7 @@ class PatchPairDataset(Dataset):
         self.require_power_cond = require_power_cond
         self.section_cond = bool(section_cond or require_section_cond)
         self.require_section_cond = require_section_cond
+        self.require_groove_cond = require_groove_cond
         self.files = sorted(self.input_dir.rglob("*_tonal.npy"))
         if not self.files:
             raise FileNotFoundError(f"パッチが見つかりません: {self.input_dir}")
@@ -126,6 +130,29 @@ class PatchPairDataset(Dataset):
         sid = int(np.asarray(np.load(section_path)).reshape(-1)[0])
         return make_section_onehot_map(sid, height=height, width=width)
 
+    def _load_groove_cond(
+        self,
+        input_path: Path,
+        height: int,
+        width: int,
+    ) -> np.ndarray | None:
+        from makeData.constants import GROOVE_COND_TYPES
+        from makeData.stroke_cond import make_groove_onehot_map
+
+        groove_path = input_path.with_name(
+            input_path.name.replace("_tonal.npy", "_groove.npy")
+        )
+        n = len(GROOVE_COND_TYPES)
+        if not groove_path.is_file():
+            if self.require_groove_cond:
+                raise FileNotFoundError(
+                    f"groove ラベルがありません。synthetic pairs を再生成してください: "
+                    f"{groove_path}"
+                )
+            return None
+        gid = int(np.asarray(np.load(groove_path)).reshape(-1)[0])
+        return make_groove_onehot_map(gid, height=height, width=width, n_types=n)
+
     def _load(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         input_path = self.files[idx]
         rel_path = input_path.relative_to(self.input_dir)
@@ -139,16 +166,23 @@ class PatchPairDataset(Dataset):
 
         cond = self._load_cond(input_path, input_arr.shape[1], input_arr.shape[2])
         channels = [input_arr.astype(np.float32), cond]
-        power = self._load_power_cond(
+        # backing: groove。lead: power → section。同時指定は想定外。
+        groove = self._load_groove_cond(
             input_path, input_arr.shape[1], input_arr.shape[2]
         )
-        if power is not None:
-            channels.append(power)
-        section = self._load_section_cond(
-            input_path, input_arr.shape[1], input_arr.shape[2]
-        )
-        if section is not None:
-            channels.append(section)
+        if groove is not None:
+            channels.append(groove)
+        else:
+            power = self._load_power_cond(
+                input_path, input_arr.shape[1], input_arr.shape[2]
+            )
+            if power is not None:
+                channels.append(power)
+            section = self._load_section_cond(
+                input_path, input_arr.shape[1], input_arr.shape[2]
+            )
+            if section is not None:
+                channels.append(section)
         model_in = np.concatenate(channels, axis=0)
 
         return (

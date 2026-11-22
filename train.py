@@ -124,6 +124,7 @@ def train(
     require_power_cond: bool = False,
     section_cond: bool = False,
     require_section_cond: bool = False,
+    require_groove_cond: bool = False,
     mask_ratio: float = 0.0,
     use_film: bool = False,
     aux_loss_weight: float = 0.0,
@@ -156,6 +157,7 @@ def train(
             require_power_cond=require_power_cond,
             section_cond=section_cond,
             require_section_cond=require_section_cond,
+            require_groove_cond=require_groove_cond,
             cache=cache_dataset,
         )
     print(f"学習パッチ数: {len(dataset)}")
@@ -343,6 +345,11 @@ def main() -> None:
         help="全inputに*_section.npyを必須化",
     )
     parser.add_argument(
+        "--require-groove-cond",
+        action="store_true",
+        help="backing 用: *_groove.npy 必須（7stroke+arp one-hot → in=20）",
+    )
+    parser.add_argument(
         "--cvae",
         action="store_true",
         help="確率的生成（条件付きVAE）で学習する。同じ入力から多様な出力を得る",
@@ -438,6 +445,7 @@ def main() -> None:
         require_power_cond=args.require_power_cond,
         section_cond=args.section_cond,
         require_section_cond=args.require_section_cond,
+        require_groove_cond=args.require_groove_cond,
         mask_ratio=args.mask_ratio,
         use_film=args.use_film,
         aux_loss_weight=args.aux_loss_weight,

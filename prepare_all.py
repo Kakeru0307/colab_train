@@ -131,6 +131,7 @@ def prepare_all(
         mode=mode,
         min_onsets=min_onsets,
         first_patch_only=True,  # 8小節ちょうどでも patches:2 になるバグ回避
+        write_groove_cond=True,
     )
 
     empty_techs = {"midi_files": 0, "total_patches": 0}
@@ -148,6 +149,7 @@ def prepare_all(
             techs_pairs_dir,
             mode=mode,
             min_onsets=min_onsets,
+            write_groove_cond=False,
         )
         techs_label = "full"
     else:
@@ -164,6 +166,7 @@ def prepare_all(
                 mode=mode,
                 min_onsets=min_onsets,
                 midi_files=curated,
+                write_groove_cond=False,
             )
             techs_label = "curated"
 

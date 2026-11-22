@@ -5,10 +5,12 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 import muspy
 import numpy as np
 
+from makeData.stroke_cond import groove_cond_to_id, resolve_groove_cond_name
 from util.density_cond import bpm_to_unit, midi_tempo_bpm
 from util.midi_to_patch import MidiPatch, midi_to_patches
 from util.skeleton import PAIR_MODES, make_input_tonal
@@ -27,6 +29,26 @@ def patch_has_notes(patch: MidiPatch, *, min_onsets: int = 1) -> bool:
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 
+def _load_synth_meta_by_file(raw_dir: Path) -> dict[str, dict[str, Any]]:
+    """synthetic manifest.json から file名 → meta。無ければ空。"""
+    path = raw_dir / "manifest.json"
+    if not path.is_file():
+        return {}
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    out: dict[str, dict[str, Any]] = {}
+    for entry in data.get("entries") or []:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("file") or entry.get("path")
+        if not name:
+            continue
+        stem = Path(str(name)).name
+        out[stem] = entry
+        out[Path(stem).stem] = entry
+    return out
+
+
 def save_pair_patches(
     patches: list[MidiPatch],
     input_dir: Path,
@@ -36,6 +58,7 @@ def save_pair_patches(
     min_onsets: int,
     bpm: float,
     first_patch_only: bool = False,
+    groove_id: int | None = None,
 ) -> int:
     input_dir.mkdir(parents=True, exist_ok=True)
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -55,6 +78,8 @@ def save_pair_patches(
         np.save(input_dir / f"{stem}_tonal.npy", input_tonal.astype(np.uint8, copy=False))
         np.save(target_dir / f"{stem}_tonal.npy", target_tonal.astype(np.uint8, copy=False))
         np.save(input_dir / f"{stem}_cond.npy", cond_unit)
+        if groove_id is not None:
+            np.save(input_dir / f"{stem}_groove.npy", np.int64(groove_id))
         saved += 1
 
     return saved
@@ -69,6 +94,7 @@ def prepare_pairs(
     categories: list[str] | None = None,
     midi_files: list[Path] | None = None,
     first_patch_only: bool = False,
+    write_groove_cond: bool = True,
 ) -> dict:
     input_root = pairs_dir / "input"
     target_root = pairs_dir / "target"
@@ -86,6 +112,8 @@ def prepare_pairs(
     if not files:
         raise FileNotFoundError(f"MIDI が見つかりません: {raw_dir}")
 
+    meta_by_file = _load_synth_meta_by_file(raw_dir) if write_groove_cond else {}
+
     stats = {
         "mode": mode,
         "raw_dir": str(raw_dir),
@@ -94,6 +122,7 @@ def prepare_pairs(
         "songs": [],
         "total_patches": 0,
         "cond": "bpm_unit",
+        "groove_cond": bool(write_groove_cond),
     }
 
     for midi_path in files:
@@ -101,6 +130,30 @@ def prepare_pairs(
         music = muspy.read_midi(midi_path)
         bpm = midi_tempo_bpm(music)
         patches = midi_to_patches(midi_path)
+        groove_id: int | None = None
+        groove_name: str | None = None
+        if write_groove_cond:
+            meta = meta_by_file.get(midi_path.name) or meta_by_file.get(midi_path.stem)
+            # ファイル名に arpeggio / 既知 groove が含まれる場合のフォールバック
+            if meta is None:
+                lower = midi_path.name.lower()
+                if "arpeggio" in lower or "progression_arpeggio" in lower:
+                    meta = {"pattern": "progression_arpeggio"}
+                else:
+                    for gid in (
+                        "eight_even",
+                        "four_down",
+                        "sixteen_busy",
+                        "backbeat_chop",
+                        "front_heavy",
+                        "sparse_pad",
+                        "rest_groove",
+                    ):
+                        if gid in lower:
+                            meta = {"stroke_groove": gid}
+                            break
+            groove_name = resolve_groove_cond_name(meta)
+            groove_id = groove_cond_to_id(groove_name)
         saved = save_pair_patches(
             patches,
             input_root / song_id,
@@ -109,17 +162,21 @@ def prepare_pairs(
             min_onsets=min_onsets,
             bpm=bpm,
             first_patch_only=first_patch_only,
+            groove_id=groove_id,
         )
-        stats["songs"].append(
-            {
-                "song_id": song_id,
-                "midi": str(midi_path),
-                "patches": saved,
-                "bpm": bpm,
-            }
-        )
+        song_stat: dict[str, Any] = {
+            "song_id": song_id,
+            "midi": str(midi_path),
+            "patches": saved,
+            "bpm": bpm,
+        }
+        if groove_name is not None:
+            song_stat["groove_cond"] = groove_name
+            song_stat["groove_id"] = groove_id
+        stats["songs"].append(song_stat)
         stats["total_patches"] += saved
-        print(f"{song_id}: {saved} patches (bpm={bpm:.1f})")
+        extra = f" groove={groove_name}" if groove_name else ""
+        print(f"{song_id}: {saved} patches (bpm={bpm:.1f}{extra})")
 
     manifest_path = pairs_dir / "manifest.json"
     with open(manifest_path, "w", encoding="utf-8") as f:
@@ -165,6 +222,11 @@ def main() -> None:
         default=None,
         help="例: P3_music P1_techniques（指定時は該当フォルダのみ）",
     )
+    parser.add_argument(
+        "--no-groove-cond",
+        action="store_true",
+        help="*_groove.npy を書かない（Guitar-TECHS 等）",
+    )
     args = parser.parse_args()
 
     prepare_pairs(
@@ -173,6 +235,7 @@ def main() -> None:
         mode=args.mode,
         min_onsets=args.min_onsets,
         categories=args.categories,
+        write_groove_cond=not args.no_groove_cond,
     )
 
 
