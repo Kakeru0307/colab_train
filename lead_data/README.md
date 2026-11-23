@@ -7,7 +7,22 @@
 - GAPS: `import_gaps.py`（クラシック MIDI・arp スコア上位選別）+ `oversample_pairs.py`
 - 一括: リポジトリ直下 `build_lead_pairs_mixed.py`
 
-Colab の `GEN_LEAD` 既定: **`synthtab_pick5000.zip`** + **`gaps_v1_midi.zip`**（arp 上位 100、5–8% OS）+ 旧 zip から EGSolo/GuitarSet。合成なし・一から学習。
+Colab の `GEN_LEAD` 既定: **`synthtab_pick5000.zip`** + **`gaps_v1_midi.zip`**（arp 上位 **160**、実効目標 **~40%**・上限 45%）+ 旧 zip から EGSolo/GuitarSet。合成なし・一から学習。
+
+**pair 再利用（節約・推奨）:** `colab_train.ipynb` で次を設定してリード用セルを実行。
+
+```text
+GEN_BACKING = False
+GEN_LEAD = True
+GEN_BASS = False
+GEN_DRUM = False
+FORCE_REBUILD_LEAD_PAIRS = False
+LEAD_GAPS_BOOST_REUSE = True   # 旧 pairs 展開 → GAPS top160 + OS~40% → Drive 再保存
+TRAIN_CVAE = True              # boost 後に lead scratch 学習
+```
+
+ST の MIDI→pair は走らない。かかるのは旧 zip 展開・GAPS MIDI 展開・GAPS import/OS・再 zip。  
+`LEAD_GAPS_BOOST_REUSE=False` かつ `FORCE_REBUILD=False` だと旧低比率 zip の展開だけなので 40% にならない。
 
 ```bash
 python build_lead_pairs_mixed.py \
@@ -18,10 +33,10 @@ python build_lead_pairs_mixed.py \
   --synthtab-min-bars 8 \
   --synthtab-no-keyword-filter \
   --gaps-dir /content/gaps_midi \
-  --gaps-top-k 100 \
-  --gaps-target-ratio 0.06 \
-  --gaps-min-ratio 0.05 \
-  --gaps-max-ratio 0.10
+  --gaps-top-k 160 \
+  --gaps-target-ratio 0.40 \
+  --gaps-min-ratio 0.38 \
+  --gaps-max-ratio 0.45
 
 python train.py --pairs-dir data/pairs/lead --cvae --require-power-cond \
   --lr 1e-3 --epochs 40 ...
