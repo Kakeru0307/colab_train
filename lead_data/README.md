@@ -16,13 +16,13 @@ GEN_BACKING = False
 GEN_LEAD = True
 GEN_BASS = False
 GEN_DRUM = False
-FORCE_REBUILD_LEAD_PAIRS = False
-LEAD_GAPS_BOOST_REUSE = True   # 旧 pairs 展開 → GAPS top160 + OS~40% → Drive 再保存
-TRAIN_CVAE = True              # boost 後に lead scratch 学習
+FORCE_REBUILD_LEAD_PAIRS = True   # 新 ST 5000 を反映するときは True（BOOST より優先）
+LEAD_GAPS_BOOST_REUSE = False     # True は旧 ST のまま GAPS だけ足す
+TRAIN_CVAE = True
 ```
 
-ST の MIDI→pair は走らない。かかるのは旧 zip 展開・GAPS MIDI 展開・GAPS import/OS・再 zip。  
-`LEAD_GAPS_BOOST_REUSE=False` かつ `FORCE_REBUILD=False` だと旧低比率 zip の展開だけなので 40% にならない。
+新 ST を入れるときは必ず `FORCE_REBUILD_LEAD_PAIRS=True`。`LEAD_GAPS_BOOST_REUSE=True` だけだと過去の Drive pairs を読んで ST が更新されない。  
+GAPS ~40% は一式再 pair（`_build_from_midi`）の中で入る。
 
 ```bash
 python build_lead_pairs_mixed.py \
