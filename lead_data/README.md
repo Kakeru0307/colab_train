@@ -7,7 +7,7 @@
 - GAPS: `import_gaps.py`（クラシック MIDI・arp スコア上位選別）+ `oversample_pairs.py`
 - 一括: リポジトリ直下 `build_lead_pairs_mixed.py`
 
-Colab の `GEN_LEAD` 既定: **`synthtab_pick5000.zip`** + **`gaps_v1_midi.zip`**（arp 上位 **160**、実効目標 **~40%**・上限 45%）+ 旧 zip から EGSolo/GuitarSet。合成なし・一から学習。
+Colab の `GEN_LEAD` 既定: **`synthtab_pick5000.zip`**（TSV **4589**＝mono≥0.3 の3914＋高音追加675）+ 旧 merged から **`synthtab_extra_solo411.txt` の411本**と EGSolo/GuitarSet + **`gaps_v1_midi.zip`**（arp 上位 **160**、実効 **~40%**・上限 45%）。SynthTab 系合計 **5000**。合成なし・一から学習。
 
 **pair 再利用（節約・推奨）:** `colab_train.ipynb` で次を設定してリード用セルを実行。
 
@@ -51,4 +51,4 @@ python train.py --pairs-dir data/pairs/lead --cvae --require-power-cond \
 
 同梱 MIDI zip（再構築用）: `synthtab_pick5000.zip` / `gaps_v1_midi.zip` / 旧 `synthtab_lead_merged.zip`
 
-再生成 MIDI: `materialize_synthtab_pick.py` ← `all_jams_midi.zip` + `synthtab_pick5000.tsv`。
+再生成 MIDI: `materialize_synthtab_pick.py` ← `all_jams_midi.zip` + `synthtab_pick5000.tsv`。追加ソロ MIDI は `synthtab_lead_merged.zip` + `synthtab_extra_solo411.txt`。高音追加一覧: `synthtab_extra_high675.txt`（既に pick zip に焼込み済み）。
