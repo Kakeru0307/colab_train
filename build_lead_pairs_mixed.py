@@ -70,11 +70,11 @@ def main() -> None:
     p.add_argument(
         "--gaps-target-ratio",
         type=float,
-        default=0.06,
+        default=0.10,
         help="GAPS 実効パッチ目標比率（min 未満なら複製）",
     )
-    p.add_argument("--gaps-min-ratio", type=float, default=0.05)
-    p.add_argument("--gaps-max-ratio", type=float, default=0.10)
+    p.add_argument("--gaps-min-ratio", type=float, default=0.08)
+    p.add_argument("--gaps-max-ratio", type=float, default=0.12)
     p.add_argument("--skip-gaps-oversample", action="store_true")
     p.add_argument("--clear", action="store_true", help="先に pairs-dir を削除")
     p.add_argument("--seed", type=int, default=42)
