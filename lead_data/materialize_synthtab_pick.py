@@ -6,8 +6,8 @@
 例:
   python lead_data/materialize_synthtab_pick.py \\
     --zip /content/all_jams_midi.zip \\
-    --pick lead_data/synthtab_pick5000.tsv \\
-    --out /content/synthtab_pick5000
+    --pick lead_data/synthtab_pick10000.tsv \\
+    --out /content/synthtab_pick10000
 """
 
 from __future__ import annotations
@@ -141,7 +141,7 @@ def main() -> None:
     p.add_argument(
         "--pick",
         type=Path,
-        default=Path(__file__).resolve().parent / "synthtab_pick5000.tsv",
+        default=Path(__file__).resolve().parent / "synthtab_pick10000.tsv",
     )
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--limit", type=int, default=None, help="smoke: first N only")
