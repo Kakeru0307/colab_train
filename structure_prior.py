@@ -4,8 +4,9 @@ Trained on gated prior_pairs accept rows + EMOPIA pairs.
 Inference for the final pipeline (文 → VA encoder → V/A → prior → backing/lead).
 
 v2: 入力は VA 2次元（感情エンコーダがテキストから直接回帰）。
-v3: BPM は条件つきビン分布からサンプル。energy は BPM から導出（学習ヘッドなし）。
+v3: BPM は条件つきビン分布からサンプル。energy は学習ヘッドなし。
 v4: prog は mode one-hot 条件（C1）。推論で mode↔prog プール整合。
+v5: 曲 energy は VA arousal から導出（カタログ乱択時のみ BPM フォールバック）。
 """
 
 from __future__ import annotations
@@ -18,46 +19,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from makeData.progressions import progression_ok_for_mode
+from makeData.progressions import (
+    PROGRESSION_BY_NAME,
+    PROGRESSIONS as _PROGRESSION_SPECS,
+    progression_ok_for_mode,
+)
 
 # valence + arousal の 2次元のみ
 FEATURE_DIM = 2
 
-PROGRESSIONS: tuple[str, ...] = (
-    "marusa",
-    "komuro",
-    "canon_short",
-    "canon_full",
-    "jpop_subdom",
-    "classic_turnaround",
-    "two_five_one",
-    "doowop",
-    "pop_axis",
-    "cycle_1625",
-    "subdom_start",
-    "resolve_4516",
-    "descending_bass",
-    "deceptive",
-    "plagal_ish",
-    "simple_15",
-    "simple_14",
-    "simple_16",
-    "simple_64",
-    "simple_45",
-    "minor_komuro",
-    "minor_natural_loop",
-    "minor_basic",
-    "minor_rock",
-    "minor_expand",
-    "minor_marusa_like",
-    "minor_simple_17",
-    "minor_simple_16",
-    "minor_simple_14",
-    "rock_bVII",
-    "rock_I_IV_bVII_IV",
-    "rock_vi_walkdown",
-    "blues_12bar_short",
-)
+# makeData.progressions と常に同期（Memo proceed##### 含む）
+PROGRESSIONS: tuple[str, ...] = tuple(spec.name for spec in _PROGRESSION_SPECS)
 
 KEYS: tuple[str, ...] = (
     "C",
@@ -105,17 +77,7 @@ BPM_BIN_EDGES: tuple[float, ...] = (
 N_BPM_BINS = len(BPM_BIN_EDGES) - 1
 
 _PROGRESSION_FAMILY: dict[str, str] = {
-    **{
-        n: "diatonic_major"
-        for n in PROGRESSIONS
-        if not n.startswith("minor_")
-        and n not in ("rock_bVII", "rock_I_IV_bVII_IV", "rock_vi_walkdown", "blues_12bar_short")
-    },
-    **{n: "diatonic_minor" for n in PROGRESSIONS if n.startswith("minor_")},
-    "rock_bVII": "borrowed",
-    "rock_I_IV_bVII_IV": "borrowed",
-    "rock_vi_walkdown": "borrowed",
-    "blues_12bar_short": "blues",
+    n: PROGRESSION_BY_NAME[n].family for n in PROGRESSIONS if n in PROGRESSION_BY_NAME
 }
 
 
@@ -135,10 +97,24 @@ class StructurePriorOut:
 
 
 def energy_from_bpm(bpm: float) -> str:
+    """カタログ乱択用フォールバック（VA が無いとき）。"""
     b = float(bpm)
     if b < 90.0:
         return "low"
     if b < 120.0:
+        return "mid"
+    return "high"
+
+
+def energy_from_va(va: tuple[float, float] | list[float]) -> str:
+    """曲 energy = arousal 帯（-1‥+1 を三等分）。
+
+    low: a < -1/3 / mid: |a| 小さい / high: a ≥ +1/3
+    """
+    a = float(va[1])
+    if a < -1.0 / 3.0:
+        return "low"
+    if a < 1.0 / 3.0:
         return "mid"
     return "high"
 
@@ -251,6 +227,12 @@ def _prog_mask_for_mode(mode: str) -> torch.Tensor:
     )
 
 
+# marusa 系が安すぎるので、当たったら 50% だけ採用・棄却なら再抽選（連続採用可）
+MARUSA_PROG_NAMES: frozenset[str] = frozenset({"marusa", "minor_marusa_like"})
+MARUSA_ACCEPT_P = 0.5
+MARUSA_REROLL_MAX = 8
+
+
 def decode_outputs(
     out: dict[str, torch.Tensor],
     *,
@@ -260,6 +242,7 @@ def decode_outputs(
     temperature: float = 1.0,
     generator: torch.Generator | None = None,
     model: StructurePriorNet | None = None,
+    va: tuple[float, float] | None = None,
 ) -> StructurePriorOut:
     """Decode one sample from a batch logits dict (default: index 0).
 
@@ -267,7 +250,11 @@ def decode_outputs(
     sample=True  → categorical（同じ入力でも seed で別テイク）
 
     mode を先に決め、その mode で prog logit を取り直し（C1）＋プール外マスク。
+    energy は va があれば arousal 帯、無ければ BPM フォールバック。
+    marusa 系は sample 時のみ 50% ゲート（棄却なら再抽選）。
     """
+    import random as _random
+
     temp = max(1e-6, float(temperature))
 
     def _idx(logits: torch.Tensor, *, mask: torch.Tensor | None = None) -> int:
@@ -279,6 +266,11 @@ def decode_outputs(
             return int(row.argmax().item())
         probs = torch.softmax(row / temp, dim=-1)
         return int(torch.multinomial(probs, 1, generator=generator).item())
+
+    def _unit() -> float:
+        if generator is not None:
+            return float(torch.rand((), generator=generator).item())
+        return float(_random.random())
 
     bpm_i = _idx(out["bpm"])
     bpm = bin_to_bpm(bpm_i)
@@ -300,8 +292,18 @@ def decode_outputs(
     if not bool(prog_mask.any()):
         prog_mask = torch.ones(len(PROGRESSIONS), dtype=torch.bool)
     pi = _idx(prog_logits, mask=prog_mask)
-
     prog = PROGRESSIONS[pi]
+
+    if sample:
+        for _ in range(MARUSA_REROLL_MAX):
+            if prog not in MARUSA_PROG_NAMES:
+                break
+            if _unit() < MARUSA_ACCEPT_P:
+                break
+            pi = _idx(prog_logits, mask=prog_mask)
+            prog = PROGRESSIONS[pi]
+
+    energy = energy_from_va(va) if va is not None else energy_from_bpm(bpm)
     return StructurePriorOut(
         progression=prog,
         key=KEYS[ki],
@@ -310,7 +312,7 @@ def decode_outputs(
         bars_per_chord=BARS_PER_CHORD[bi],
         mode=mode,
         family=_PROGRESSION_FAMILY.get(prog, "diatonic_major"),
-        energy=energy_from_bpm(bpm),
+        energy=energy,
     )
 
 
@@ -393,4 +395,5 @@ def predict_structure(
         temperature=temperature,
         generator=gen,
         model=model,
+        va=resolved_va,
     )
